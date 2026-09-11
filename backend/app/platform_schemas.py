@@ -71,6 +71,25 @@ class AssistantResponse(BaseModel):
     data: dict = Field(default_factory=dict)
 
 
+class CoordinateLocationRequest(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class ProviderCapabilitiesResponse(BaseModel):
+    geocoding: bool = True
+    device_geolocation: bool = True
+    voice_input: str = "browser"
+    text_to_speech: str = "browser"
+    evidence_upload: bool = True
+    email_otp: str = "adapter_ready"
+    sms_otp: str = "adapter_ready"
+    whatsapp_notifications: str = "adapter_ready"
+    cloud_storage: str = "local_fallback"
+    image_analysis: str = "adapter_ready"
+    note: str = "Provider-dependent capabilities require deployment credentials before they can be enabled as live services."
+
+
 class IncidentResponse(BaseModel):
     incident_key: str
     category: str
