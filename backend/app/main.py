@@ -61,7 +61,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.3.0",
+    version="0.4.0",
     description="Multilingual AI-assisted civic complaint understanding and resolution prototype.",
     lifespan=lifespan,
 )
@@ -139,7 +139,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 def require_staff(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role not in {"OFFICER", "ADMIN"}:
-        raise HTTPException(status_code=403, detail="Officer or admin access is required.")
+        raise HTTPException(status_code=403, detail="Employee access is required.")
     return current_user
 
 
@@ -167,7 +167,7 @@ def ready(db: Session = Depends(get_db)) -> dict[str, str]:
 @app.post(f"{settings.api_prefix}/auth/signup", response_model=UserResponse, status_code=201)
 def signup(payload: SignUpRequest, response: Response, db: Session = Depends(get_db)) -> UserResponse:
     try:
-        user = create_user(db, payload.name, payload.email, payload.password)
+        user = create_user(db, payload.name, payload.email, payload.password, role="CITIZEN")
     except EmailAlreadyRegistered as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     set_session_cookie(response, create_session_token(user))
@@ -180,6 +180,18 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         user = authenticate_user(db, payload.email, payload.password)
     except AuthenticationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    set_session_cookie(response, create_session_token(user))
+    return user_response(user)
+
+
+@app.post(f"{settings.api_prefix}/auth/employee-login", response_model=UserResponse)
+def employee_login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> UserResponse:
+    try:
+        user = authenticate_user(db, payload.email, payload.password)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    if user.role not in {"OFFICER", "ADMIN"}:
+        raise HTTPException(status_code=403, detail="This account is not registered as a CivicResolve employee account.")
     set_session_cookie(response, create_session_token(user))
     return user_response(user)
 
@@ -224,9 +236,18 @@ def create(
         landmark=payload.landmark,
     )
     if result.missing_information:
-        raise HTTPException(status_code=422, detail={"message": "Clarification required before ticket creation.", "analysis": result.model_dump()})
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Clarification required before ticket creation.", "analysis": result.model_dump()},
+        )
     try:
-        ticket = create_ticket(db, payload, result, idempotency_key=idempotency_key, submitted_by_user_id=current_user.id)
+        ticket = create_ticket(
+            db,
+            payload,
+            result,
+            idempotency_key=idempotency_key,
+            submitted_by_user_id=current_user.id,
+        )
     except IdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -276,7 +297,13 @@ def change_status(
 ) -> TicketResponse:
     try:
         current = get_ticket(db, ticket_code)
-        updated = update_status(db, current, status=payload.status, note=payload.note, assigned_officer=payload.assigned_officer)
+        updated = update_status(
+            db,
+            current,
+            status=payload.status,
+            note=payload.note,
+            assigned_officer=payload.assigned_officer,
+        )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Ticket not found.") from exc
     except InvalidStatusTransition as exc:
