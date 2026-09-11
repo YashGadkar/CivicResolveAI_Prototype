@@ -110,7 +110,7 @@ a { color:inherit; text-decoration:none; }
 }
 .dark .shadow-panel { box-shadow:0 22px 62px rgba(0,0,0,.34),inset 0 1px rgba(255,255,255,.025); }
 
-/* Make cards feel like a polished civic dashboard instead of flat white blocks. */
+/* Polished civic dashboard surfaces. */
 main .shadow-panel,
 main [class*="rounded-2xl"][class*="border"] {
   border-color:rgba(148,163,184,.23);
@@ -121,8 +121,18 @@ main [class*="rounded-2xl"][class*="border"] {
 }
 header { box-shadow:0 10px 36px rgba(15,23,42,.065); }
 .dark header { box-shadow:0 10px 42px rgba(0,0,0,.26); }
+header nav a[aria-current="page"] {
+  background:linear-gradient(135deg,#0b2745 0%,#13577a 52%,#0f766e 100%) !important;
+  box-shadow:0 8px 22px rgba(15,76,98,.22),inset 0 1px rgba(255,255,255,.14);
+}
+header nav a:not([aria-current="page"]):hover { transform:translateY(-1px); }
+main [class*="bg-[#0b1f3a]"] {
+  background:linear-gradient(135deg,#071a2f 0%,#123d67 56%,#0f766e 135%) !important;
+  box-shadow:inset 0 1px rgba(255,255,255,.12),0 12px 30px rgba(7,26,47,.15);
+}
+main h1 { letter-spacing:-.035em; }
 
-/* Report Issue now uses the normal page scroll. No independent right-pane slider. */
+/* Report Issue uses the normal page scroll. No independent right-pane slider. */
 @media (min-width:1024px) {
   main .lg\:max-h-\[calc\(100vh-7rem\)\] {
     max-height:none !important;
