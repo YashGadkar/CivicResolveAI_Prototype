@@ -137,3 +137,47 @@ def test_citizen_cannot_use_staff_status_or_breach_controls():
         assert client.post(f"/api/v1/tickets/{code}/simulate-breach").status_code == 403
         assert client.get("/api/v1/tickets").status_code == 403
         assert client.get("/api/v1/analytics").status_code == 403
+
+
+def test_batch_api_separates_distinct_civic_problems():
+    with build_client() as client:
+        signup(client, "batch.user@gmail.com")
+        response = client.post(
+            "/api/v1/complaints/analyze-batch",
+            json={
+                "complaint": "There is no water supply for three days and garbage has not been collected for five days.",
+                "location": "Rahuri",
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["issue_count"] == 2
+        assert [issue["category"] for issue in body["issues"]] == ["Water Supply", "Garbage Collection"]
+
+
+def test_employee_can_open_full_ticket_and_citizen_details():
+    complaint = "Garbage has not been collected for five days and it is starting to smell."
+    with build_client() as client:
+        signup(client, "detail.user@gmail.com")
+        created = client.post(
+            "/api/v1/tickets",
+            json={"complaint": complaint, "location": "Aundh", "contact": "+91 9000000000"},
+        )
+        assert created.status_code == 201
+        code = created.json()["ticket_code"]
+        client.post("/api/v1/auth/logout")
+
+        seed_staff(client)
+        login = client.post(
+            "/api/v1/auth/employee-login",
+            json={"email": "officer@civicresolve.test", "password": "OfficerPass#123"},
+        )
+        assert login.status_code == 200
+
+        detail = client.get(f"/api/v1/staff/tickets/{code}")
+        assert detail.status_code == 200
+        body = detail.json()
+        assert body["complaint"] == complaint
+        assert body["citizen"]["name"] == "Citizen Test"
+        assert body["citizen"]["email"] == "detail.user@gmail.com"
+        assert body["citizen"]["contact"] == "+91 9000000000"
