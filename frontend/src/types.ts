@@ -3,6 +3,7 @@ export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export interface User { id: string; name: string; email: string; role: string; created_at: string; }
 export interface AgentStage { name: string; status: "WAITING" | "PROCESSING" | "COMPLETED" | "ACTION REQUIRED"; output: string; processing_ms: number; }
 export interface DuplicateCandidate { ticket_code: string; summary: string; similarity: number; }
+export interface LocationVerification { input: string; valid: boolean; canonical_name: string | null; latitude: number | null; longitude: number | null; provider: string; message: string; }
 
 export interface ComplaintAnalysis {
   source_text?: string | null;
@@ -24,12 +25,12 @@ export interface Ticket {
   audit_events: { event: string; detail: string; created_at: string }[];
 }
 
+export interface StaffTicket extends Ticket { citizen: { name: string; email: string; contact: string | null } | null; }
 export interface TicketMeta {
   ward: string | null; zone: string | null; city: string | null; latitude: number | null; longitude: number | null;
   emergency: boolean; incident_key: string | null; related_reports: number; archived: boolean; citizen_confirmation: string;
   rating: number | null; feedback: string | null; resolution_note: string | null;
 }
-
 export interface Attachment { id: string; kind: string; original_name: string; content_type: string; size_bytes: number; created_at: string; }
 export interface EnrichedTicket { ticket: Ticket; meta: TicketMeta; attachments: Attachment[]; citizen: { name: string; email: string; contact?: string | null } | null; }
 export interface AssistantAction { type: "NONE" | "OPEN_TICKET" | "OPEN_QUEUE" | "CREATE_COMPLAINT" | "SHOW_MY_TICKETS"; label?: string | null; value?: string | null; }
