@@ -9,6 +9,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .capability_routes import router as capability_router
 from .config import get_settings
 from .core_routes import router as core_router
 from .database import Base, engine, get_db
@@ -47,6 +48,7 @@ app.add_middleware(
 
 app.include_router(core_router)
 app.include_router(platform_router)
+app.include_router(capability_router)
 
 
 @app.middleware("http")
