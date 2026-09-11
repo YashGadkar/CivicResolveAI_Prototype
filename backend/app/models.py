@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -56,11 +56,56 @@ class Ticket(Base):
     audit_events: Mapped[list["AuditEvent"]] = relationship(
         back_populates="ticket", cascade="all, delete-orphan", order_by="AuditEvent.created_at"
     )
+    platform_meta: Mapped["TicketMeta | None"] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", uselist=False
+    )
+    attachments: Mapped[list["Attachment"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="Attachment.created_at"
+    )
 
     __table_args__ = (
         Index("ix_tickets_category_location", "category", "location"),
         Index("ix_tickets_sla_status", "sla_state", "status"),
     )
+
+
+class TicketMeta(Base):
+    __tablename__ = "ticket_meta"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    ward: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    zone: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    emergency: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    incident_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    citizen_confirmation: Mapped[str] = mapped_column(String(24), default="PENDING", nullable=False)
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="platform_meta")
+
+
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    ticket_id: Mapped[str] = mapped_column(ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    uploaded_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    ticket: Mapped[Ticket] = relationship(back_populates="attachments")
 
 
 class AuditEvent(Base):
