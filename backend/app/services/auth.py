@@ -12,6 +12,7 @@ from ..models import User
 
 settings = get_settings()
 password_hasher = PasswordHasher()
+ALLOWED_ROLES = {"CITIZEN", "OFFICER", "ADMIN"}
 
 
 class AuthenticationError(ValueError):
@@ -26,18 +27,28 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-def create_user(db: Session, name: str, email: str, password: str) -> User:
+def create_user(db: Session, name: str, email: str, password: str, role: str = "CITIZEN") -> User:
     normalized = normalize_email(email)
+    normalized_role = role.strip().upper()
+    if normalized_role not in ALLOWED_ROLES:
+        raise ValueError("Unsupported account role.")
+
     existing = db.scalar(select(User).where(func.lower(User.email) == normalized))
     if existing:
-        raise EmailAlreadyRegistered("A user with this Gmail address already exists.")
-    user = User(name=name.strip(), email=normalized, password_hash=password_hasher.hash(password), role="CITIZEN")
+        raise EmailAlreadyRegistered("An account with this email address already exists.")
+
+    user = User(
+        name=name.strip(),
+        email=normalized,
+        password_hash=password_hasher.hash(password),
+        role=normalized_role,
+    )
     db.add(user)
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise EmailAlreadyRegistered("A user with this Gmail address already exists.") from exc
+        raise EmailAlreadyRegistered("An account with this email address already exists.") from exc
     db.refresh(user)
     return user
 
