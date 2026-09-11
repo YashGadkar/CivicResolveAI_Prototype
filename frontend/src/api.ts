@@ -77,7 +77,7 @@ export const api = {
   verifyLocation: (location: string) => request<LocationVerification>("/locations/verify", { method: "POST", body: JSON.stringify({ location }) }),
   reverseDeviceLocation: (latitude: number, longitude: number) => request<LocationVerification>("/device-location/reverse", { method: "POST", body: JSON.stringify({ latitude, longitude }) }),
   analyze: (payload: ComplaintPayload) => request<ComplaintAnalysis>("/complaints/analyze", { method: "POST", body: JSON.stringify(payload) }),
-  analyzeBatch: (payload: ComplaintPayload) => request<ComplaintBatchAnalysis>("/complaints/analyze-batch", { method: "POST", body: JSON.stringify(payload) }),
+  analyzeBatch: (payload: ComplaintPayload) => request<ComplaintBatchAnalysis>("/complaints/analyze-batch-v2", { method: "POST", body: JSON.stringify(payload) }),
   createTicket,
   createTickets,
   getTicket: (code: string) => request<Ticket>(`/tickets/${encodeURIComponent(code)}`),
