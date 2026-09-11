@@ -16,6 +16,8 @@ class Ticket(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     ticket_code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True, index=True)
+    request_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
     complaint: Mapped[str] = mapped_column(Text, nullable=False)
     language: Mapped[str] = mapped_column(String(24), nullable=False)
     location: Mapped[str] = mapped_column(String(255), nullable=False)

@@ -1,9 +1,12 @@
+import hashlib
+import json
 import re
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from ..models import AuditEvent, Ticket
@@ -11,6 +14,21 @@ from ..schemas import ComplaintAnalysis, DuplicateCandidate, TicketCreateRequest
 
 
 SLA_HOURS = {"CRITICAL": 2, "HIGH": 8, "MEDIUM": 24, "LOW": 72}
+VALID_TRANSITIONS: dict[str, set[str]] = {
+    "SUBMITTED": {"ASSIGNED", "IN_PROGRESS", "RESOLVED", "ESCALATED"},
+    "ASSIGNED": {"IN_PROGRESS", "RESOLVED", "ESCALATED"},
+    "IN_PROGRESS": {"RESOLVED", "ESCALATED"},
+    "ESCALATED": {"ASSIGNED", "IN_PROGRESS", "RESOLVED"},
+    "RESOLVED": set(),
+}
+
+
+class IdempotencyConflict(ValueError):
+    pass
+
+
+class InvalidStatusTransition(ValueError):
+    pass
 
 
 def utcnow() -> datetime:
@@ -54,6 +72,13 @@ def text_similarity(left: str, right: str) -> float:
     return len(a & b) / len(a | b)
 
 
+def request_digest(payload: TicketCreateRequest) -> str:
+    # Never persist a digest of an unstable object representation. Canonical JSON makes
+    # the idempotency comparison consistent across processes and Python versions.
+    serialized = json.dumps(payload.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 def find_duplicates(db: Session, analysis: ComplaintAnalysis, complaint: str, limit: int = 3) -> list[DuplicateCandidate]:
     stmt = select(Ticket).where(Ticket.category == analysis.category).order_by(Ticket.created_at.desc()).limit(50)
     tickets = db.scalars(stmt).all()
@@ -74,14 +99,34 @@ def find_duplicates(db: Session, analysis: ComplaintAnalysis, complaint: str, li
     return candidates[:limit]
 
 
-def create_ticket(db: Session, payload: TicketCreateRequest, analysis: ComplaintAnalysis) -> Ticket:
+def create_ticket(
+    db: Session,
+    payload: TicketCreateRequest,
+    analysis: ComplaintAnalysis,
+    idempotency_key: str | None = None,
+) -> Ticket:
     if analysis.missing_information:
         raise ValueError("Required clarification is missing before ticket creation.")
     if not analysis.location:
         raise ValueError("Location is required before ticket creation.")
 
+    digest = request_digest(payload)
+    normalized_key = idempotency_key.strip() if idempotency_key else None
+    if normalized_key:
+        existing = db.scalar(
+            select(Ticket)
+            .where(Ticket.idempotency_key == normalized_key)
+            .options(selectinload(Ticket.audit_events))
+        )
+        if existing:
+            if existing.request_digest != digest:
+                raise IdempotencyConflict("Idempotency-Key was already used for a different ticket request.")
+            return existing
+
     ticket = Ticket(
         ticket_code=ticket_code(),
+        idempotency_key=normalized_key,
+        request_digest=digest if normalized_key else None,
         complaint=payload.complaint,
         language=analysis.language,
         location=analysis.location,
@@ -101,7 +146,20 @@ def create_ticket(db: Session, payload: TicketCreateRequest, analysis: Complaint
         duplicate_of=payload.duplicate_of,
     )
     db.add(ticket)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if not normalized_key:
+            raise
+        existing = db.scalar(
+            select(Ticket)
+            .where(Ticket.idempotency_key == normalized_key)
+            .options(selectinload(Ticket.audit_events))
+        )
+        if existing and existing.request_digest == digest:
+            return existing
+        raise IdempotencyConflict("Idempotency-Key was already used for a different ticket request.") from exc
 
     add_audit(db, ticket, "COMPLAINT_SUBMITTED", "Citizen complaint submitted.")
     add_audit(db, ticket, "AI_ANALYZED", f"AI-assisted deterministic analysis classified {analysis.category}.")
@@ -139,7 +197,7 @@ def get_ticket(db: Session, code: str) -> Ticket:
 
 
 def list_tickets(db: Session, limit: int = 100) -> list[Ticket]:
-    stmt = select(Ticket).order_by(Ticket.created_at.desc()).limit(limit)
+    stmt = select(Ticket).options(selectinload(Ticket.audit_events)).order_by(Ticket.created_at.desc()).limit(limit)
     return list(db.scalars(stmt).all())
 
 
@@ -151,9 +209,15 @@ def update_status(
     assigned_officer: str | None = None,
 ) -> Ticket:
     previous = ticket.status
+    if status == previous:
+        return get_ticket(db, ticket.ticket_code)
+    if status not in VALID_TRANSITIONS.get(previous, set()):
+        raise InvalidStatusTransition(f"Ticket cannot transition from {previous} to {status}.")
+
     ticket.status = status
     if assigned_officer is not None:
         ticket.assigned_officer = assigned_officer or None
+        add_audit(db, ticket, "OFFICER_ASSIGNMENT_UPDATED", f"Assigned officer: {ticket.assigned_officer or 'unassigned'}.")
     add_audit(db, ticket, "STATUS_CHANGED", f"{previous} → {status}. {note or ''}".strip())
     if status == "RESOLVED":
         ticket.sla_state = "SAFE" if compute_sla_state(ticket) != "BREACHED" else "BREACHED"
@@ -163,6 +227,8 @@ def update_status(
 
 
 def simulate_breach(db: Session, ticket: Ticket) -> Ticket:
+    if ticket.status == "RESOLVED":
+        raise InvalidStatusTransition("Resolved tickets cannot be escalated.")
     ticket.sla_deadline = utcnow() - timedelta(minutes=1)
     ticket.sla_state = "BREACHED"
     ticket.status = "ESCALATED"
