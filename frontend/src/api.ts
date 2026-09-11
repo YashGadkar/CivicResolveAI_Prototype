@@ -56,6 +56,7 @@ export const api = {
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   me: () => request<User>("/auth/me"),
   verifyLocation: (location: string) => request<LocationVerification>("/locations/verify", { method: "POST", body: JSON.stringify({ location }) }),
+  reverseDeviceLocation: (latitude: number, longitude: number) => request<LocationVerification>("/device-location/reverse", { method: "POST", body: JSON.stringify({ latitude, longitude }) }),
   analyze: (payload: ComplaintPayload) => request<ComplaintAnalysis>("/complaints/analyze", { method: "POST", body: JSON.stringify(payload) }),
   analyzeBatch: (payload: ComplaintPayload) => request<ComplaintBatchAnalysis>("/complaints/analyze-batch", { method: "POST", body: JSON.stringify(payload) }),
   createTicket,
