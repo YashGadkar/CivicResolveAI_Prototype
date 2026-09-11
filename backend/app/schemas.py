@@ -68,15 +68,29 @@ class UserResponse(BaseModel):
 
 class AnalyzeComplaintRequest(BaseModel):
     complaint: str = Field(min_length=10, max_length=5000)
-    # Retained for backwards compatibility; the server always auto-detects language.
     language: str = Field(default="Auto", max_length=24)
     location: str | None = Field(default=None, max_length=255)
     landmark: str | None = Field(default=None, max_length=255)
+    verify_location: bool = False
 
     @field_validator("complaint", "location", "landmark", mode="before")
     @classmethod
     def strip_strings(cls, value):
         return value.strip() if isinstance(value, str) else value
+
+
+class LocationVerificationRequest(BaseModel):
+    location: str = Field(min_length=2, max_length=255)
+
+
+class LocationVerificationResponse(BaseModel):
+    input: str
+    valid: bool
+    canonical_name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    provider: str = "OpenStreetMap Nominatim"
+    message: str
 
 
 class AgentStage(BaseModel):
@@ -93,6 +107,7 @@ class DuplicateCandidate(BaseModel):
 
 
 class ComplaintAnalysis(BaseModel):
+    source_text: str | None = None
     category: str
     location: str | None
     landmark: str | None
@@ -112,6 +127,16 @@ class ComplaintAnalysis(BaseModel):
     citizen_response: str
     agent_trace: list[AgentStage]
     duplicate_candidates: list[DuplicateCandidate] = Field(default_factory=list)
+    location_verified: bool | None = None
+    location_display_name: str | None = None
+    location_verification_message: str | None = None
+
+
+class ComplaintBatchAnalysis(BaseModel):
+    language: str
+    language_code: str
+    issue_count: int
+    issues: list[ComplaintAnalysis]
 
 
 class TicketCreateRequest(AnalyzeComplaintRequest):
@@ -154,6 +179,16 @@ class TicketResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     audit_events: list[AuditEventResponse]
+
+
+class StaffCitizenResponse(BaseModel):
+    name: str
+    email: str
+    contact: str | None = None
+
+
+class StaffTicketResponse(TicketResponse):
+    citizen: StaffCitizenResponse | None = None
 
 
 class AnalyticsResponse(BaseModel):

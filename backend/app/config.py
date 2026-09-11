@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     jwt_exp_hours: int = 8
     auth_cookie_name: str = "civicresolve_session"
     auth_cookie_secure: bool = False
+    geocoder_base_url: str = "https://nominatim.openstreetmap.org"
+    geocoder_country_codes: str = "in"
+    geocoder_timeout_seconds: float = 4.0
+    geocoder_user_agent: str = "CivicResolveAI/0.5 civic-resolution-prototype"
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -29,6 +33,10 @@ class Settings(BaseSettings):
     @property
     def allowed_host_list(self) -> list[str]:
         return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    @property
+    def geocoder_country_code_list(self) -> list[str]:
+        return [code.strip().lower() for code in self.geocoder_country_codes.split(",") if code.strip()]
 
     def validate_security(self) -> None:
         if self.environment.lower() == "production" and self.jwt_secret == "development-only-change-me-please-replace-123456":

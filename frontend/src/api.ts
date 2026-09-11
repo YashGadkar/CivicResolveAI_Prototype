@@ -1,7 +1,8 @@
-import type { Analytics, ComplaintAnalysis, Ticket, User } from "./types";
+import type { Analytics, ComplaintAnalysis, ComplaintBatchAnalysis, LocationVerification, StaffTicket, Ticket, User } from "./types";
 
 const API = import.meta.env.VITE_API_URL || "/api/v1";
 const pendingTicketKeys = new Map<string, string>();
+const pendingBatchKeys = new Map<string, string[]>();
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const { headers, ...rest } = options;
@@ -32,24 +33,33 @@ export type ComplaintPayload = {
   landmark?: string;
   contact?: string;
   duplicate_of?: string;
+  verify_location?: boolean;
 };
 
-async function createTicket(payload: ComplaintPayload): Promise<Ticket> {
+async function createTicket(payload: ComplaintPayload, explicitIdempotencyKey?: string): Promise<Ticket> {
   const payloadKey = JSON.stringify(payload);
-  const idempotencyKey = pendingTicketKeys.get(payloadKey) || crypto.randomUUID();
-  pendingTicketKeys.set(payloadKey, idempotencyKey);
+  const idempotencyKey = explicitIdempotencyKey || pendingTicketKeys.get(payloadKey) || crypto.randomUUID();
+  if (!explicitIdempotencyKey) pendingTicketKeys.set(payloadKey, idempotencyKey);
 
-  try {
-    const ticket = await request<Ticket>("/tickets", {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: payloadKey
-    });
-    pendingTicketKeys.delete(payloadKey);
-    return ticket;
-  } catch (error) {
-    throw error;
+  const ticket = await request<Ticket>("/tickets", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: payloadKey
+  });
+  if (!explicitIdempotencyKey) pendingTicketKeys.delete(payloadKey);
+  return ticket;
+}
+
+async function createTickets(payloads: ComplaintPayload[]): Promise<Ticket[]> {
+  const batchKey = JSON.stringify(payloads);
+  const keys = pendingBatchKeys.get(batchKey) || payloads.map(() => crypto.randomUUID());
+  pendingBatchKeys.set(batchKey, keys);
+  const tickets: Ticket[] = [];
+  for (let i = 0; i < payloads.length; i += 1) {
+    tickets.push(await createTicket(payloads[i], keys[i]));
   }
+  pendingBatchKeys.delete(batchKey);
+  return tickets;
 }
 
 export const api = {
@@ -61,10 +71,16 @@ export const api = {
     request<User>("/auth/employee-login", { method: "POST", body: JSON.stringify(payload) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   me: () => request<User>("/auth/me"),
+  verifyLocation: (location: string) =>
+    request<LocationVerification>("/locations/verify", { method: "POST", body: JSON.stringify({ location }) }),
   analyze: (payload: ComplaintPayload) =>
     request<ComplaintAnalysis>("/complaints/analyze", { method: "POST", body: JSON.stringify(payload) }),
+  analyzeBatch: (payload: ComplaintPayload) =>
+    request<ComplaintBatchAnalysis>("/complaints/analyze-batch", { method: "POST", body: JSON.stringify(payload) }),
   createTicket,
+  createTickets,
   getTicket: (code: string) => request<Ticket>(`/tickets/${encodeURIComponent(code)}`),
+  getStaffTicket: (code: string) => request<StaffTicket>(`/staff/tickets/${encodeURIComponent(code)}`),
   myTickets: () => request<Ticket[]>("/tickets/mine"),
   listTickets: () => request<Ticket[]>("/tickets"),
   simulateBreach: (code: string) =>

@@ -16,8 +16,13 @@ from .schemas import (
     AnalyzeComplaintRequest,
     AnalyticsResponse,
     ComplaintAnalysis,
+    ComplaintBatchAnalysis,
+    LocationVerificationRequest,
+    LocationVerificationResponse,
     LoginRequest,
     SignUpRequest,
+    StaffCitizenResponse,
+    StaffTicketResponse,
     TicketCreateRequest,
     TicketResponse,
     TicketStatusRequest,
@@ -31,7 +36,8 @@ from .services.auth import (
     create_user,
     decode_session_token,
 )
-from .services.pipeline import analyze_complaint
+from .services.location import verify_location
+from .services.pipeline import analyze_complaint, analyze_complaints, detect_language
 from .services.ticketing import (
     IdempotencyConflict,
     InvalidStatusTransition,
@@ -61,7 +67,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.4.0",
+    version="0.5.0",
     description="Multilingual AI-assisted civic complaint understanding and resolution prototype.",
     lifespan=lifespan,
 )
@@ -149,6 +155,44 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def apply_location_verification(result: ComplaintAnalysis, enabled: bool) -> ComplaintAnalysis:
+    if not enabled or not result.location:
+        return result
+    verification = verify_location(result.location)
+    result.location_verified = verification.valid
+    result.location_display_name = verification.canonical_name
+    result.location_verification_message = verification.message
+    if verification.valid and verification.canonical_name:
+        result.location = verification.canonical_name
+        if "location" in result.missing_information:
+            result.missing_information.remove("location")
+        result.clarification_questions = [
+            q for q in result.clarification_questions
+            if "location" not in q.casefold() and "area" not in q.casefold()
+        ]
+    elif not verification.valid:
+        result.location = None
+        if "location" not in result.missing_information:
+            result.missing_information.insert(0, "location")
+        result.clarification_questions.insert(0, verification.message)
+        result.citizen_response = verification.message
+    return result
+
+
+def staff_response(db: Session, ticket_code: str) -> StaffTicketResponse:
+    current = get_ticket(db, ticket_code)
+    citizen = db.get(User, current.submitted_by_user_id) if current.submitted_by_user_id else None
+    base = to_response(current).model_dump()
+    return StaffTicketResponse(
+        **base,
+        citizen=StaffCitizenResponse(
+            name=citizen.name,
+            email=citizen.email,
+            contact=current.contact,
+        ) if citizen else None,
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": settings.app_name, "environment": settings.environment}
@@ -206,6 +250,14 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return user_response(current_user)
 
 
+@app.post(f"{settings.api_prefix}/locations/verify", response_model=LocationVerificationResponse)
+def verify_location_endpoint(
+    payload: LocationVerificationRequest,
+    _current_user: User = Depends(get_current_user),
+) -> LocationVerificationResponse:
+    return verify_location(payload.location)
+
+
 @app.post(f"{settings.api_prefix}/complaints/analyze", response_model=ComplaintAnalysis)
 def analyze(
     payload: AnalyzeComplaintRequest,
@@ -218,8 +270,42 @@ def analyze(
         supplied_location=payload.location,
         landmark=payload.landmark,
     )
+    result = apply_location_verification(result, payload.verify_location)
     result.duplicate_candidates = find_duplicates(db, result, payload.complaint)
     return result
+
+
+@app.post(f"{settings.api_prefix}/complaints/analyze-batch", response_model=ComplaintBatchAnalysis)
+def analyze_batch(
+    payload: AnalyzeComplaintRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> ComplaintBatchAnalysis:
+    issues = analyze_complaints(payload.complaint, supplied_location=payload.location, landmark=payload.landmark)
+    verified_cache: dict[str, LocationVerificationResponse] = {}
+    for issue in issues:
+        if payload.verify_location and issue.location:
+            key = issue.location.casefold().strip()
+            verification = verified_cache.get(key)
+            if verification is None:
+                verification = verify_location(issue.location)
+                verified_cache[key] = verification
+            issue.location_verified = verification.valid
+            issue.location_display_name = verification.canonical_name
+            issue.location_verification_message = verification.message
+            if verification.valid and verification.canonical_name:
+                issue.location = verification.canonical_name
+                if "location" in issue.missing_information:
+                    issue.missing_information.remove("location")
+            else:
+                issue.location = None
+                if "location" not in issue.missing_information:
+                    issue.missing_information.insert(0, "location")
+                issue.clarification_questions.insert(0, verification.message)
+                issue.citizen_response = verification.message
+        issue.duplicate_candidates = find_duplicates(db, issue, issue.source_text or payload.complaint)
+    language, code, _ = detect_language(payload.complaint)
+    return ComplaintBatchAnalysis(language=language, language_code=code, issue_count=len(issues), issues=issues)
 
 
 @app.post(f"{settings.api_prefix}/tickets", response_model=TicketResponse, status_code=201)
@@ -235,6 +321,7 @@ def create(
         supplied_location=payload.location,
         landmark=payload.landmark,
     )
+    result = apply_location_verification(result, payload.verify_location)
     if result.missing_information:
         raise HTTPException(
             status_code=422,
@@ -286,6 +373,18 @@ def ticket(
     if current_user.role not in {"OFFICER", "ADMIN"} and current.submitted_by_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Ticket not found.")
     return to_response(current)
+
+
+@app.get(f"{settings.api_prefix}/staff/tickets/{{ticket_code}}", response_model=StaffTicketResponse)
+def staff_ticket(
+    ticket_code: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_staff),
+) -> StaffTicketResponse:
+    try:
+        return staff_response(db, ticket_code)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Ticket not found.") from exc
 
 
 @app.patch(f"{settings.api_prefix}/tickets/{{ticket_code}}/status", response_model=TicketResponse)

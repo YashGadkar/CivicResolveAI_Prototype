@@ -21,7 +21,18 @@ export interface DuplicateCandidate {
   similarity: number;
 }
 
+export interface LocationVerification {
+  input: string;
+  valid: boolean;
+  canonical_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  provider: string;
+  message: string;
+}
+
 export interface ComplaintAnalysis {
+  source_text: string | null;
   category: string;
   location: string | null;
   landmark: string | null;
@@ -41,6 +52,16 @@ export interface ComplaintAnalysis {
   citizen_response: string;
   agent_trace: AgentStage[];
   duplicate_candidates: DuplicateCandidate[];
+  location_verified: boolean | null;
+  location_display_name: string | null;
+  location_verification_message: string | null;
+}
+
+export interface ComplaintBatchAnalysis {
+  language: string;
+  language_code: string;
+  issue_count: number;
+  issues: ComplaintAnalysis[];
 }
 
 export interface Ticket {
@@ -66,6 +87,10 @@ export interface Ticket {
   created_at: string;
   updated_at: string;
   audit_events: { event: string; detail: string; created_at: string }[];
+}
+
+export interface StaffTicket extends Ticket {
+  citizen: { name: string; email: string; contact: string | null } | null;
 }
 
 export interface Analytics {

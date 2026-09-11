@@ -5,21 +5,90 @@ from dataclasses import dataclass
 from ..schemas import AgentStage, ComplaintAnalysis
 
 CATEGORY_RULES = {
-    "Water Supply": ("Water Supply Department", ["water", "पाणी", "पानी", "agua", "eau", "wasser", "água", "مياه", "পানি", "પાણી", "ਪਾਣੀ", "தண்ணீர்", "నీరు", "ನೀರು", "വെള്ളം", "停水", "断水", "단수"]),
-    "Garbage Collection": ("Solid Waste Management Department", ["garbage", "waste", "trash", "कचरा", "कूड़ा", "basura", "déchets", "müll", "lixo", "قمامة", "আবর্জনা", "કચરો", "குப்பை", "చెత్త", "ಕಸ", "മാലിന്യം", "垃圾", "ゴミ", "쓰레기"]),
-    "Roads & Potholes": ("Roads & Public Works Department", ["pothole", "broken road", "road damaged", "खड्डा", "गड्ढा", "bache", "nid-de-poule", "schlagloch", "حفرة", "গর্ত", "குழி", "రోడ్డు గుంత", "ಗುಂಡಿ", "റോഡ് കുഴി", "坑洼", "道路破損", "포트홀"]),
-    "Streetlights": ("Street Lighting Department", ["streetlight", "street light", "lamp post", "पथदिवा", "स्ट्रीट लाइट", "farola", "éclairage public", "straßenlaterne", "إنارة الشوارع", "রাস্তার আলো", "தெருவிளக்கு", "వీధి దీపం", "ಬೀದಿ ದೀಪ", "തെരുവ് വിളക്ക്", "路灯", "街灯", "가로등"]),
-    "Drainage & Sewage": ("Drainage & Sewerage Department", ["drainage", "sewage", "sewer", "गटार", "सीवर", "alcantarillado", "égout", "abwasser", "esgoto", "صرف صحي", "নর্দমা", "சாக்கடை", "కాలువ", "ಚರಂಡಿ", "അഴുക്കുചാൽ", "下水道", "하수구"]),
-    "Electricity": ("Electrical Services Department", ["electricity", "power outage", "no power", "transformer", "वीज", "बिजली", "electricidad", "électricité", "stromausfall", "energia", "الكهرباء", "বিদ্যুৎ", "மின்சாரம்", "కరెంట్", "ವಿದ್ಯುತ್", "വൈദ്യുതി", "停电", "停電", "정전"]),
-    "Public Transport": ("Public Transport Department", ["bus", "public transport", "metro", "बस", "autobús", "transport public", "公交", "公共交通"]),
-    "Sanitation": ("Sanitation Department", ["public toilet", "sanitation", "शौचालय", "स्वच्छता", "baño público", "toilettes publiques"]),
-    "Public Health": ("Public Health Department", ["mosquito", "dengue", "health hazard", "डेंग्यू", "आरोग्य", "moustique", "بعوض", "ডেঙ্গু"]),
-    "Parks & Environment": ("Parks & Environment Department", ["park", "tree fallen", "pollution", "झाड", "उद्यान", "parque", "umwelt", "تلوث", "公园"]),
-    "Traffic & Parking": ("Traffic Management Department", ["traffic", "parking", "congestion", "वाहतूक", "पार्किंग", "tráfico", "stationnement", "verkehr", "مرور", "交通"]),
-    "Construction & Encroachment": ("Encroachment & Building Department", ["encroachment", "illegal construction", "अतिक्रमण", "बांधकाम", "construcción ilegal", "construction illégale", "تعدي"]),
-    "Stray Animals": ("Animal Welfare & Control Department", ["stray dog", "stray animal", "dog attack", "भटके कुत्रे", "आवारा कुत्ते", "perro callejero", "chien errant", "كلب ضال"]),
-    "Noise Pollution": ("Environment & Enforcement Department", ["noise", "loudspeaker", "loud music", "आवाज", "शोर", "ruido", "bruit", "lärm", "ضوضاء"]),
-    "Public Safety": ("Civic Safety Coordination Cell", ["danger", "unsafe", "open manhole", "collapsed", "fire", "धोका", "अपघात", "peligro", "dangereux", "خطر", "危险"]),
+    "Water Supply": (
+        "Water Supply Department",
+        [
+            "water", "no water", "water supply", "tap dry", "पाणी", "पाणी येत नाही", "पानी", "पानी नहीं",
+            "जलापूर्ति", "agua", "eau", "wasser", "água", "مياه", "الماء", "پانی", "পানি", "જળ", "પાણી",
+            "ਪਾਣੀ", "தண்ணீர்", "நீர்", "నీరు", "ನೀರು", "വെള്ളം", "ପାଣି", "停水", "断水", "단수",
+        ],
+    ),
+    "Garbage Collection": (
+        "Solid Waste Management Department",
+        [
+            "garbage", "waste", "trash", "rubbish", "garbage not collected", "कचरा", "कूड़ा", "कचरा उचलला नाही",
+            "basura", "déchets", "müll", "lixo", "قمامة", "نفايات", "کوڑا", "আবর্জনা", "કચરો", "குப்பை", "చెత్త",
+            "ಕಸ", "മാലിന്യം", "ଆବର୍ଜନା", "垃圾", "ゴミ", "쓰레기",
+        ],
+    ),
+    "Roads & Potholes": (
+        "Roads & Public Works Department",
+        [
+            "pothole", "broken road", "road damaged", "road crack", "खड्डा", "रस्ता खराब", "गड्ढा", "सड़क टूटी",
+            "bache", "nid-de-poule", "schlagloch", "حفرة", "طريق مكسور", "گڑھا", "গর্ত", "রাস্তা ভাঙা",
+            "சாலை குழி", "குழி", "రోడ్డు గుంత", "ಗುಂಡಿ", "റോഡ് കുഴി", "ରାସ୍ତା ଗର୍ତ୍ତ", "坑洼", "道路破損", "포트홀",
+        ],
+    ),
+    "Streetlights": (
+        "Street Lighting Department",
+        [
+            "streetlight", "street light", "lamp post", "street lamp", "पथदिवा", "दिवा बंद", "स्ट्रीट लाइट", "बत्ती बंद",
+            "farola", "éclairage public", "straßenlaterne", "إنارة الشوارع", "مصباح الشارع", "اسٹریٹ لائٹ", "রাস্তার আলো",
+            "தெருவிளக்கு", "వీధి దీపం", "ಬೀದಿ ದೀಪ", "തെരുവ് വിളക്ക്", "ରାସ୍ତା ଆଲୋକ", "路灯", "街灯", "가로등",
+        ],
+    ),
+    "Drainage & Sewage": (
+        "Drainage & Sewerage Department",
+        [
+            "drainage", "sewage", "sewer", "drain overflow", "गटार", "नाला", "सीवर", "नाली", "alcantarillado", "égout",
+            "abwasser", "esgoto", "صرف صحي", "مجاري", "گٹر", "নর্দমা", "ડ્રેનેજ", "சாக்கடை", "కాలువ", "ಚರಂಡಿ",
+            "അഴുക്കുചാൽ", "ନାଳା", "下水道", "하수구",
+        ],
+    ),
+    "Electricity": (
+        "Electrical Services Department",
+        [
+            "electricity", "power outage", "no power", "power cut", "transformer", "वीज", "वीज नाही", "बिजली", "बिजली नहीं",
+            "electricidad", "électricité", "stromausfall", "energia", "الكهرباء", "انقطاع الكهرباء", "بجلی", "বিদ্যুৎ",
+            "વીજળી", "மின்சாரம்", "కరెంట్", "ವಿದ್ಯುತ್", "വൈദ്യുതി", "ବିଦ୍ୟୁତ", "停电", "停電", "정전",
+        ],
+    ),
+    "Public Transport": (
+        "Public Transport Department",
+        ["bus", "public transport", "metro", "bus stop", "बस", "बस सेवा", "autobús", "transport public", "حافلة", "বাস", "பேருந்து", "బస్సు", "ಬಸ್", "ബസ്", "公交", "公共交通"],
+    ),
+    "Sanitation": (
+        "Sanitation Department",
+        ["public toilet", "sanitation", "dirty toilet", "शौचालय", "स्वच्छता", "सार्वजनिक शौचालय", "baño público", "toilettes publiques", "مرحاض عام", "পাবলিক টয়লেট", "பொது கழிப்பிடம்"],
+    ),
+    "Public Health": (
+        "Public Health Department",
+        ["mosquito", "dengue", "health hazard", "disease outbreak", "डेंग्यू", "डास", "आरोग्य", "moustique", "بعوض", "حمى الضنك", "ডেঙ্গু", "கொசு", "డెంగ్యూ"],
+    ),
+    "Parks & Environment": (
+        "Parks & Environment Department",
+        ["park", "tree fallen", "fallen tree", "pollution", "झाड", "झाड पडले", "उद्यान", "पेड़ गिरा", "parque", "pollution", "umwelt", "تلوث", "شجرة ساقطة", "গাছ পড়ে", "மரம் விழுந்த", "公园"],
+    ),
+    "Traffic & Parking": (
+        "Traffic Management Department",
+        ["traffic", "parking", "congestion", "traffic jam", "वाहतूक", "कोंडी", "पार्किंग", "ट्रैफिक", "tráfico", "stationnement", "verkehr", "مرور", "ازدحام", "যানজট", "போக்குவரத்து நெரிசல்", "交通"],
+    ),
+    "Construction & Encroachment": (
+        "Encroachment & Building Department",
+        ["encroachment", "illegal construction", "unauthorized construction", "अतिक्रमण", "बेकायदेशीर बांधकाम", "अवैध निर्माण", "construcción ilegal", "construction illégale", "تعدي", "بناء غير قانوني", "অবৈধ নির্মাণ"],
+    ),
+    "Stray Animals": (
+        "Animal Welfare & Control Department",
+        ["stray dog", "stray animal", "dog attack", "भटके कुत्रे", "कुत्र्यांचा त्रास", "आवारा कुत्ते", "perro callejero", "chien errant", "كلب ضال", "آوارہ کتے", "রাস্তার কুকুর", "தெரு நாய்"],
+    ),
+    "Noise Pollution": (
+        "Environment & Enforcement Department",
+        ["noise", "loudspeaker", "loud music", "noise pollution", "आवाज", "मोठा आवाज", "शोर", "ruido", "bruit", "lärm", "ضوضاء", "شور", "শব্দ দূষণ", "ஒலி மாசு"],
+    ),
+    "Public Safety": (
+        "Civic Safety Coordination Cell",
+        ["danger", "unsafe", "open manhole", "collapsed", "fire", "live wire", "धोका", "मॅनहोल", "अपघात", "खतरा", "खुला मैनहोल", "peligro", "dangereux", "خطر", "منهول مفتوح", "خطرہ", "খোলা ম্যানহোল", "ஆபத்து", "危险"],
+    ),
 }
 
 ACTIONS = {
@@ -33,21 +102,49 @@ ACTIONS = {
 DEFAULT_ACTIONS = ["Validate the affected civic service.", "Assign the correct operational team.", "Update the citizen with the next action and expected timeline."]
 
 SCRIPT_RULES = [
-    (r"[\u0980-\u09FF]", "Bengali", "bn", "Bengali"), (r"[\u0A80-\u0AFF]", "Gujarati", "gu", "Gujarati"),
-    (r"[\u0A00-\u0A7F]", "Punjabi", "pa", "Gurmukhi"), (r"[\u0B80-\u0BFF]", "Tamil", "ta", "Tamil"),
-    (r"[\u0C00-\u0C7F]", "Telugu", "te", "Telugu"), (r"[\u0C80-\u0CFF]", "Kannada", "kn", "Kannada"),
-    (r"[\u0D00-\u0D7F]", "Malayalam", "ml", "Malayalam"), (r"[\u0B00-\u0B7F]", "Odia", "or", "Odia"),
-    (r"[\u0E00-\u0E7F]", "Thai", "th", "Thai"), (r"[\u3040-\u30FF]", "Japanese", "ja", "Japanese Kana"),
-    (r"[\uAC00-\uD7AF]", "Korean", "ko", "Hangul"), (r"[\u4E00-\u9FFF]", "Chinese", "zh", "Han"),
-    (r"[\u0370-\u03FF]", "Greek", "el", "Greek"), (r"[\u0590-\u05FF]", "Hebrew", "he", "Hebrew"),
+    (r"[\u0980-\u09FF]", "Bengali", "bn", "Bengali"),
+    (r"[\u0A80-\u0AFF]", "Gujarati", "gu", "Gujarati"),
+    (r"[\u0A00-\u0A7F]", "Punjabi", "pa", "Gurmukhi"),
+    (r"[\u0B80-\u0BFF]", "Tamil", "ta", "Tamil"),
+    (r"[\u0C00-\u0C7F]", "Telugu", "te", "Telugu"),
+    (r"[\u0C80-\u0CFF]", "Kannada", "kn", "Kannada"),
+    (r"[\u0D00-\u0D7F]", "Malayalam", "ml", "Malayalam"),
+    (r"[\u0B00-\u0B7F]", "Odia", "or", "Odia"),
+    (r"[\u0E00-\u0E7F]", "Thai", "th", "Thai"),
+    (r"[\u3040-\u30FF]", "Japanese", "ja", "Japanese Kana"),
+    (r"[\uAC00-\uD7AF]", "Korean", "ko", "Hangul"),
+    (r"[\u4E00-\u9FFF]", "Chinese", "zh", "Han"),
+    (r"[\u0370-\u03FF]", "Greek", "el", "Greek"),
+    (r"[\u0590-\u05FF]", "Hebrew", "he", "Hebrew"),
 ]
-LATIN_HINTS = [
-    ("Spanish", "es", [" no hay ", " agua ", " basura ", " calle "]), ("French", "fr", [" pas de ", " eau ", " déchets ", " rue "]),
-    ("German", "de", [" kein ", " wasser ", " müll ", " straße "]), ("Portuguese", "pt", [" não ", " água ", " lixo ", " rua "]),
-    ("Italian", "it", [" non ", " acqua ", " rifiuti ", " strada "]), ("Indonesian", "id", [" tidak ", " jalan ", " sampah ", " listrik "]),
-]
+
+LATIN_LANGUAGE_WORDS = {
+    ("English", "en"): {"the", "is", "not", "there", "our", "road", "water", "garbage", "street", "for", "and", "no"},
+    ("Spanish", "es"): {"el", "la", "los", "las", "no", "hay", "agua", "basura", "calle", "desde", "días", "carretera"},
+    ("French", "fr"): {"le", "la", "les", "pas", "eau", "déchets", "rue", "depuis", "jours", "route"},
+    ("German", "de"): {"der", "die", "das", "kein", "wasser", "müll", "straße", "seit", "tagen", "strom"},
+    ("Portuguese", "pt"): {"não", "água", "lixo", "rua", "desde", "dias", "estrada", "energia"},
+    ("Italian", "it"): {"non", "acqua", "rifiuti", "strada", "giorni", "luce", "fognatura"},
+    ("Indonesian", "id"): {"tidak", "air", "jalan", "sampah", "listrik", "hari", "lampu"},
+}
+
+MARATHI_WORDS = {"आहे", "नाही", "पासून", "भागात", "आमच्या", "पाणी", "रस्ता", "कचरा", "वीज", "दिवसांपासून", "झाले"}
+HINDI_WORDS = {"है", "नहीं", "हमारे", "इलाके", "पानी", "सड़क", "कचरा", "बिजली", "दिनों", "से", "हो", "रहा"}
 NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पांच": 5, "पाच": 5, "दोन": 2, "uno": 1, "dos": 2, "tres": 3}
-LOCATION_QUESTIONS = {"mr": "कृपया परिसर, वॉर्ड किंवा जवळचे ठिकाण सांगा.", "hi": "कृपया क्षेत्र, वार्ड या नज़दीकी स्थान बताएं।", "es": "Indique su zona, barrio, distrito o punto de referencia más cercano.", "fr": "Veuillez indiquer votre quartier, secteur ou point de repère le plus proche.", "ar": "يرجى ذكر المنطقة أو الحي أو أقرب معلم.", "bn": "অনুগ্রহ করে এলাকা, ওয়ার্ড বা কাছাকাছি কোনো পরিচিত স্থান লিখুন।", "ta": "உங்கள் பகுதி, வார்டு அல்லது அருகிலுள்ள அடையாளத்தை குறிப்பிடவும்."}
+LOCATION_QUESTIONS = {
+    "mr": "कृपया परिसर, वॉर्ड किंवा जवळचे ठिकाण सांगा.",
+    "hi": "कृपया क्षेत्र, वार्ड या नज़दीकी स्थान बताएं।",
+    "es": "Indique su zona, barrio, distrito o punto de referencia más cercano.",
+    "fr": "Veuillez indiquer votre quartier, secteur ou point de repère le plus proche.",
+    "ar": "يرجى ذكر المنطقة أو الحي أو أقرب معلم.",
+    "bn": "অনুগ্রহ করে এলাকা, ওয়ার্ড বা কাছাকাছি কোনো পরিচিত স্থান লিখুন।",
+    "ta": "உங்கள் பகுதி, வார்டு அல்லது அருகிலுள்ள அடையாளத்தை குறிப்பிடவும்.",
+}
+
+ISSUE_SEPARATOR_RE = re.compile(
+    r"(?:\n+|;|(?<=[.!?।])\s+|\s+(?:also|and also|furthermore|moreover|और|तसेच|आणि|এবং|અને|மற்றும்|మరియు|ಮತ್ತು|കൂടാതെ|اور)\s+)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -60,7 +157,12 @@ class StageTimer:
         return cls(name, time.perf_counter())
 
     def finish(self, status: str, output: str) -> AgentStage:
-        return AgentStage(name=self.name, status=status, output=output, processing_ms=max(1, round((time.perf_counter() - self.started) * 1000)))
+        return AgentStage(
+            name=self.name,
+            status=status,
+            output=output,
+            processing_ms=max(1, round((time.perf_counter() - self.started) * 1000)),
+        )
 
 
 def normalize(text: str) -> str:
@@ -71,41 +173,80 @@ def detect_language(text: str) -> tuple[str, str, str]:
     for pattern, language, code, script in SCRIPT_RULES:
         if re.search(pattern, text):
             return language, code, script
+
     if re.search(r"[\u0900-\u097F]", text):
-        marathi = any(word in text for word in ("आहे", "नाही", "पासून", "भागात", "पाणी", "रस्ता", "कचरा"))
-        return ("Marathi", "mr", "Devanagari") if marathi else ("Hindi", "hi", "Devanagari")
+        tokens = set(re.findall(r"[\u0900-\u097F]+", text))
+        marathi_score = len(tokens & MARATHI_WORDS)
+        hindi_score = len(tokens & HINDI_WORDS)
+        if marathi_score > hindi_score:
+            return "Marathi", "mr", "Devanagari"
+        return "Hindi", "hi", "Devanagari"
+
     if re.search(r"[\u0600-\u06FF]", text):
         if any(ch in text for ch in ("ے", "ں", "ٹ", "ڈ", "ڑ")):
             return "Urdu", "ur", "Arabic"
         if any(ch in text for ch in ("گ", "چ", "پ", "ژ")):
             return "Persian", "fa", "Arabic"
         return "Arabic", "ar", "Arabic"
+
     if re.search(r"[\u0400-\u04FF]", text):
         return ("Ukrainian", "uk", "Cyrillic") if any(ch in text.lower() for ch in ("і", "ї", "є", "ґ")) else ("Russian", "ru", "Cyrillic")
-    padded = f" {normalize(text)} "
-    for language, code, hints in LATIN_HINTS:
-        if sum(hint in padded for hint in hints) >= 2:
-            return language, code, "Latin"
+
+    tokens = set(re.findall(r"[a-zA-ZÀ-ÿ]+", text.casefold()))
+    scores = [((language, code), len(tokens & words)) for (language, code), words in LATIN_LANGUAGE_WORDS.items()]
+    (language, code), score = max(scores, key=lambda item: item[1])
+    if score > 0:
+        return language, code, "Latin"
     return "English", "en", "Latin"
 
 
 def classify(text: str) -> tuple[str, float]:
     value = normalize(text)
     tokens = set(re.findall(r"\w+", value, flags=re.UNICODE))
-    scores = {}
+    scores: dict[str, float] = {}
     for category, (_, signals) in CATEGORY_RULES.items():
         score = 0.0
         for signal in signals:
             sig = signal.casefold()
             if sig in value:
-                score += 3 if " " in sig else 2
-            else:
+                score += 3.0 if " " in sig else 2.0
+            elif sig.isascii():
                 parts = set(re.findall(r"\w+", sig, flags=re.UNICODE))
                 if parts and len(parts & tokens) / len(parts) >= 0.66:
-                    score += 1
+                    score += 1.0
         scores[category] = score
     category, score = max(scores.items(), key=lambda item: item[1])
-    return ("Other Civic Service", 0.56) if score <= 0 else (category, min(0.97, 0.72 + score * 0.035))
+    return ("Other Civic Service", 0.55) if score <= 0 else (category, min(0.97, 0.72 + score * 0.035))
+
+
+def split_complaint_issues(text: str) -> list[str]:
+    raw_parts = [part.strip(" -\t") for part in ISSUE_SEPARATOR_RE.split(text) if part.strip(" -\t")]
+    if not raw_parts:
+        return [text.strip()]
+
+    expanded: list[str] = []
+    for part in raw_parts:
+        candidates = [segment.strip() for segment in re.split(r"\s+(?:and|&)\s+", part, flags=re.IGNORECASE) if segment.strip()]
+        if len(candidates) > 1:
+            known = [classify(segment)[0] for segment in candidates]
+            if sum(category != "Other Civic Service" for category in known) >= 2 and len(set(c for c in known if c != "Other Civic Service")) >= 2:
+                expanded.extend(candidates)
+                continue
+        expanded.append(part)
+
+    grouped: list[tuple[str, list[str]]] = []
+    for part in expanded:
+        category, _ = classify(part)
+        if category == "Other Civic Service" and grouped and len(part) < 70:
+            grouped[-1][1].append(part)
+            continue
+        if grouped and grouped[-1][0] == category and category != "Other Civic Service":
+            grouped[-1][1].append(part)
+        else:
+            grouped.append((category, [part]))
+
+    issues = [" ".join(parts).strip() for _, parts in grouped if " ".join(parts).strip()]
+    return issues[:6] or [text.strip()]
 
 
 def extract_duration(text: str) -> tuple[str | None, float | None]:
@@ -158,25 +299,27 @@ def citizen_message(code: str, category: str, department: str, missing: list[str
 def analyze_complaint(complaint: str, selected_language: str = "Auto", supplied_location: str | None = None, landmark: str | None = None) -> ComplaintAnalysis:
     del selected_language
     trace: list[AgentStage] = []
+
     timer = StageTimer.start("Language Detection Agent")
     language, code, script = detect_language(complaint)
     trace.append(timer.finish("COMPLETED", f"Detected {language} ({code}) from {script} script/features."))
 
     timer = StageTimer.start("Complaint Understanding Agent")
     category, confidence = classify(complaint)
-    trace.append(timer.finish("COMPLETED", f"Civic intent classified as {category} with {confidence:.0%} confidence."))
+    trace.append(timer.finish("COMPLETED", f"Civic intent classified as {category}."))
 
     timer = StageTimer.start("Entity & Location Agent")
     duration, duration_days = extract_duration(complaint)
     location = extract_location(complaint, supplied_location)
-    trace.append(timer.finish("COMPLETED", f"duration={duration or 'not stated'}; location={location or 'missing'}" + (f"; landmark={landmark}" if landmark else "")))
+    trace.append(timer.finish("COMPLETED", f"duration={duration or 'not stated'}; location={location or 'missing'}"))
 
     timer = StageTimer.start("Priority & Urgency Agent")
     priority, reason = determine_priority(category, complaint, duration_days)
     trace.append(timer.finish("COMPLETED", f"{priority} — {reason}"))
 
     timer = StageTimer.start("Missing Information Agent")
-    missing, questions = [], []
+    missing: list[str] = []
+    questions: list[str] = []
     if not location:
         missing.append("location")
         questions.append(LOCATION_QUESTIONS.get(code, "Please provide your area, locality, ward or nearest landmark."))
@@ -187,13 +330,14 @@ def analyze_complaint(complaint: str, selected_language: str = "Auto", supplied_
 
     department = CATEGORY_RULES.get(category, ("Citizen Services Coordination Cell", []))[0]
     timer = StageTimer.start("Department Routing Agent")
-    trace.append(timer.finish("COMPLETED", f"Routed to {department} based on the detected complaint category."))
-    recommendations = ACTIONS.get(category, DEFAULT_ACTIONS)
+    trace.append(timer.finish("COMPLETED", f"Routed to {department}."))
 
+    recommendations = ACTIONS.get(category, DEFAULT_ACTIONS)
     timer = StageTimer.start("Ticket Agent")
     trace.append(timer.finish("ACTION REQUIRED" if missing else "WAITING", "Waiting for required clarification before ticket creation." if missing else "Ready to create a persistent ticket."))
     timer = StageTimer.start("Resolution Recommendation Agent")
     trace.append(timer.finish("WAITING" if missing else "COMPLETED", recommendations[0]))
+
     response = citizen_message(code, category, department, missing)
     timer = StageTimer.start("Citizen Response Agent")
     trace.append(timer.finish("COMPLETED", response))
@@ -203,10 +347,28 @@ def analyze_complaint(complaint: str, selected_language: str = "Auto", supplied_
     trace.append(timer.finish("WAITING", "Escalation activates only if the configured prototype SLA is breached."))
 
     return ComplaintAnalysis(
-        category=category, location=location, landmark=landmark, duration=duration, priority=priority, urgency=priority,
-        department=department, missing_information=missing, clarification_questions=questions,
-        resolution_recommendation=recommendations, language=language, language_code=code, detected_script=script,
-        analysis_mode="Automatic multilingual deterministic analysis", confidence=round(confidence, 2),
-        reasoning_summary=f"Language was detected automatically as {language}. The complaint was classified as {category} with {confidence:.0%} confidence. Priority is {priority} because {reason.lower()} Routing target: {department}.",
-        citizen_response=response, agent_trace=trace,
+        source_text=complaint,
+        category=category,
+        location=location,
+        landmark=landmark,
+        duration=duration,
+        priority=priority,
+        urgency=priority,
+        department=department,
+        missing_information=missing,
+        clarification_questions=questions,
+        resolution_recommendation=recommendations,
+        language=language,
+        language_code=code,
+        detected_script=script,
+        analysis_mode="Automatic multilingual deterministic analysis",
+        confidence=round(confidence, 2),
+        reasoning_summary=f"The complaint was classified as {category}. Priority is {priority}. Routing target: {department}.",
+        citizen_response=response,
+        agent_trace=trace,
     )
+
+
+def analyze_complaints(complaint: str, supplied_location: str | None = None, landmark: str | None = None) -> list[ComplaintAnalysis]:
+    issues = split_complaint_issues(complaint)
+    return [analyze_complaint(issue, supplied_location=supplied_location, landmark=landmark) for issue in issues]
