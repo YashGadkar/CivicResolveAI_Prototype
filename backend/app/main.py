@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
 from .models import User
+from .platform_routes import router as platform_router
 from .schemas import (
     AnalyzeComplaintRequest,
     AnalyticsResponse,
@@ -67,7 +68,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.5.0",
+    version="0.6.0",
     description="Multilingual AI-assisted civic complaint understanding and resolution prototype.",
     lifespan=lifespan,
 )
@@ -79,9 +80,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Idempotency-Key", "X-Request-ID"],
 )
+app.include_router(platform_router)
 
 
 @app.middleware("http")
@@ -360,7 +362,7 @@ def tickets(
     return [to_response(get_ticket(db, item.ticket_code)) for item in list_tickets(db, limit)]
 
 
-@app.get(f"{settings.api_prefix}/tickets/{{ticket_code}}", response_model=TicketResponse)
+@app.get(f"{settings.api_prefix}/tickets/{ticket_code}", response_model=TicketResponse)
 def ticket(
     ticket_code: str,
     db: Session = Depends(get_db),
@@ -375,7 +377,7 @@ def ticket(
     return to_response(current)
 
 
-@app.get(f"{settings.api_prefix}/staff/tickets/{{ticket_code}}", response_model=StaffTicketResponse)
+@app.get(f"{settings.api_prefix}/staff/tickets/{ticket_code}", response_model=StaffTicketResponse)
 def staff_ticket(
     ticket_code: str,
     db: Session = Depends(get_db),
@@ -387,7 +389,7 @@ def staff_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found.") from exc
 
 
-@app.patch(f"{settings.api_prefix}/tickets/{{ticket_code}}/status", response_model=TicketResponse)
+@app.patch(f"{settings.api_prefix}/tickets/{ticket_code}/status", response_model=TicketResponse)
 def change_status(
     ticket_code: str,
     payload: TicketStatusRequest,
@@ -410,7 +412,7 @@ def change_status(
     return to_response(updated)
 
 
-@app.post(f"{settings.api_prefix}/tickets/{{ticket_code}}/simulate-breach", response_model=TicketResponse)
+@app.post(f"{settings.api_prefix}/tickets/{ticket_code}/simulate-breach", response_model=TicketResponse)
 def breach(
     ticket_code: str,
     db: Session = Depends(get_db),
