@@ -4,18 +4,37 @@ const API = import.meta.env.VITE_API_URL || "/api/v1";
 const pendingTicketKeys = new Map<string, string>();
 const pendingBatchKeys = new Map<string, string[]>();
 
+function localBackendHint() {
+  if (typeof window === "undefined") return "The CivicResolve backend could not be reached. Please retry.";
+  const local = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  return local
+    ? "The CivicResolve backend could not be reached. Start the backend on http://localhost:8000 and keep it running, then retry."
+    : "The CivicResolve service could not be reached. Please retry in a moment.";
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const { headers, body, ...rest } = options;
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
-  const response = await fetch(`${API}${path}`, {
-    ...rest,
-    body,
-    credentials: "include",
-    headers: isForm ? { ...(headers || {}) } : { "Content-Type": "application/json", ...(headers || {}) }
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API}${path}`, {
+      ...rest,
+      body,
+      credentials: "include",
+      headers: isForm ? { ...(headers || {}) } : { "Content-Type": "application/json", ...(headers || {}) },
+    });
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error(localBackendHint());
+    throw error;
+  }
+
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: "Request failed." }));
-    const detail = typeof payload.detail === "string" ? payload.detail : payload.detail?.message || payload.detail?.[0]?.msg || "Request failed.";
+    let detail = typeof payload.detail === "string" ? payload.detail : payload.detail?.message || payload.detail?.[0]?.msg || "Request failed.";
+    if (response.status >= 500 && typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+      detail = localBackendHint();
+    }
     throw new Error(detail);
   }
   if (response.status === 204) return undefined as T;
@@ -82,5 +101,5 @@ export const api = {
   evidenceUrl: (attachmentId: string) => `${API}/platform/attachments/${encodeURIComponent(attachmentId)}`,
   incidents: () => request<Incident[]>("/platform/incidents"),
   platformAnalytics: () => request<PlatformAnalytics>("/platform/analytics"),
-  assistant: (message: string) => request<AssistantResponse>("/platform/assistant", { method: "POST", body: JSON.stringify({ message }) })
+  assistant: (message: string) => request<AssistantResponse>("/platform/assistant", { method: "POST", body: JSON.stringify({ message }) }),
 };
