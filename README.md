@@ -4,97 +4,78 @@
 
 CivicResolve AI is a production-style hackathon prototype for **PS02 — AI-Powered Citizen Complaint Understanding & Resolution Assistant**.
 
-It converts an unstructured civic complaint into a structured, prioritized, routed and trackable government-service ticket using a real deterministic multi-stage processing pipeline. The application works without an external AI provider and supports English, Hindi and Marathi demo flows.
+The citizen does **not** choose a prebuilt complaint scenario or civic category. They write the real problem naturally, and the backend pipeline automatically detects the complaint language, classifies the civic issue, extracts useful details, calculates urgency, detects missing information, routes the case to a department and creates a trackable ticket.
 
-## Features
+## Current features
 
-- Natural-language citizen complaint submission
-- English, Hindi and Marathi complaint handling
-- Civic category classification across multiple public-service domains
-- Entity, locality, landmark and duration extraction
-- LOW / MEDIUM / HIGH / CRITICAL priority assessment
-- Missing-information detection and clarification questions
-- Automatic department routing
-- Dynamic `CR-*` ticket generation
-- Configurable prototype SLA deadlines and SLA state tracking
-- SLA breach simulation and automatic escalation
-- Resolution recommendations for officers
-- Citizen-facing generated responses
+- Secure citizen sign-in and sign-up
+- Gmail-format account validation (`@gmail.com`)
+- Strong password policy
+- Argon2 password hashing
+- HttpOnly JWT session cookie
+- Public signup always creates a `CITIZEN` role; users cannot self-assign staff privileges
+- Citizen ticket ownership and **My Complaints** workspace
+- Automatic language detection — no citizen language picker
+- Broad Unicode/script detection including Latin, Devanagari, Bengali, Gujarati, Gurmukhi, Tamil, Telugu, Kannada, Malayalam, Odia, Arabic, Cyrillic, Han, Japanese Kana, Hangul, Thai, Greek and Hebrew scripts
+- Multilingual civic concept classification with deterministic fallback
+- Category, duration, location, priority and department analysis
+- Missing-information clarification questions
+- Dynamic `CR-*` ticket creation
 - Duplicate complaint detection
-- Immutable-style audit timeline for important ticket actions
-- Citizen complaint tracking
-- Department Officer Dashboard
-- Admin analytics dashboard using clearly labelled synthetic/demo data
-- AI Command Center showing the multi-agent processing workflow
-- Request IDs, readiness checks and privacy-safe request logging
-- Idempotent ticket creation for safe client retries
-- Explicit ticket status transition rules
-- Alembic database migrations
-- Docker support
-- GitHub Actions CI for backend tests, migrations, type checking and production builds
+- Configurable prototype SLAs and escalation
+- Citizen tracking and audit history
+- Staff-only officer queue
+- Admin-only analytics
+- AI Command Center that accepts a real complaint instead of a preset demo scenario
+- Alembic migrations, Docker support and GitHub Actions CI
 
-## Tech Stack
+> The prototype accepts Unicode complaints without requiring a language selection. The deterministic offline classifier has richer civic vocabulary for supported languages and safely falls back to **Other Civic Service** plus clarification when it cannot confidently determine the service. It does not claim perfect universal-language AI accuracy.
 
-### Frontend
+## Stack
 
-- React
-- TypeScript
-- Vite
-- Tailwind CSS
-- shadcn-style UI primitives
-- Lucide icons
-- Recharts
-- Framer Motion
+**Frontend:** React, TypeScript, Vite, Tailwind CSS, Lucide, Recharts, Framer Motion  
+**Backend:** Python, FastAPI, SQLAlchemy, Pydantic, Alembic, Argon2, PyJWT  
+**Database:** SQLite locally; SQLAlchemy is structured for PostgreSQL deployment
 
-### Backend
-
-- Python
-- FastAPI
-- SQLAlchemy
-- Pydantic
-- Alembic
-- SQLite for local/demo use
-- PostgreSQL-compatible SQLAlchemy configuration for deployment
-
-## Project Structure
+## Project structure
 
 ```text
 CivicResolveAi/
-├── backend/              # FastAPI application, services, migrations and tests
-├── frontend/             # React + TypeScript application
-├── .github/workflows/    # CI workflow
-├── docker-compose.yml    # Full-stack Docker setup
-├── DEVELOPMENT.md        # Development and operations notes
+├── backend/
+│   ├── app/
+│   │   ├── services/auth.py
+│   │   ├── services/pipeline.py
+│   │   └── services/ticketing.py
+│   ├── migrations/
+│   └── tests/
+├── frontend/
+│   └── src/
+├── docker-compose.yml
+├── DEVELOPMENT.md
 └── README.md
 ```
 
-# Quick Start — Run Frontend and Backend Locally
+# Run locally
 
-You need two terminals: one for the backend and one for the frontend.
+Use two terminals: one for FastAPI and one for Vite.
 
-## Prerequisites
+## Requirements
 
-Install:
+- Python 3.11+
+- Node.js 22+
+- npm
+- Git
 
-- **Python 3.11+**
-- **Node.js 22+**
-- **npm**
-- **Git**
-
-Docker is optional if you prefer the container setup described later.
-
-## 1. Clone the repository
+## Clone
 
 ```bash
 git clone https://github.com/aniketchougule1902/CivicResolveAi.git
 cd CivicResolveAi
 ```
 
-# Backend Setup
+## Backend
 
-Open a terminal in the repository root.
-
-## Windows PowerShell / CMD
+### Windows PowerShell / CMD
 
 ```bash
 cd backend
@@ -106,7 +87,7 @@ python -m alembic upgrade head
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## macOS / Linux
+### macOS / Linux / Codebox
 
 ```bash
 cd backend
@@ -122,26 +103,14 @@ Backend URLs:
 
 ```text
 API:          http://localhost:8000
-Swagger Docs: http://localhost:8000/docs
+Swagger:      http://localhost:8000/docs
 Health:       http://localhost:8000/health
 Readiness:    http://localhost:8000/ready
 ```
 
-# Backend Environment Setup
+## Backend environment
 
-For local development, copy:
-
-```text
-backend/.env.example
-```
-
-to:
-
-```text
-backend/.env
-```
-
-Default local configuration:
+Copy `backend/.env.example` to `backend/.env`.
 
 ```env
 ENVIRONMENT=development
@@ -149,41 +118,41 @@ DATABASE_URL=sqlite:///./civicresolve.db
 CORS_ORIGINS=http://localhost:5173,http://localhost:8080
 ALLOWED_HOSTS=*
 AUTO_CREATE_SCHEMA=true
+JWT_SECRET=replace-this-with-a-long-random-secret-at-least-32-chars
+JWT_EXP_HOURS=8
+AUTH_COOKIE_NAME=civicresolve_session
+AUTH_COOKIE_SECURE=false
 ```
 
-### Environment variables
+Important settings:
 
-| Variable | Purpose | Local default |
-| --- | --- | --- |
-| `ENVIRONMENT` | Runtime environment name | `development` |
-| `DATABASE_URL` | SQLAlchemy database connection URL | `sqlite:///./civicresolve.db` |
-| `CORS_ORIGINS` | Comma-separated browser origins allowed by the API | `http://localhost:5173,http://localhost:8080` |
-| `ALLOWED_HOSTS` | Comma-separated accepted host names | `*` |
-| `AUTO_CREATE_SCHEMA` | Allows zero-config schema creation during development | `true` |
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | SQLAlchemy database connection |
+| `JWT_SECRET` | Signs authenticated sessions; use a long random secret |
+| `JWT_EXP_HOURS` | Session expiration |
+| `AUTH_COOKIE_SECURE` | Set `true` when the real deployment is served over HTTPS |
+| `CORS_ORIGINS` | Allowed frontend origins |
+| `ALLOWED_HOSTS` | Allowed HTTP host names |
+| `AUTO_CREATE_SCHEMA` | Local convenience only; deployments should use Alembic |
 
-No external AI API key is required for the working prototype. Complaint analysis uses the built-in deterministic fallback pipeline.
-
-For a production-style environment, prefer:
+For an HTTPS production deployment:
 
 ```env
 ENVIRONMENT=production
-DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE_NAME
-CORS_ORIGINS=https://your-frontend.example.com
-ALLOWED_HOSTS=api.your-domain.example.com
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE
+CORS_ORIGINS=https://your-domain.example
+ALLOWED_HOSTS=your-domain.example
 AUTO_CREATE_SCHEMA=false
+JWT_SECRET=GENERATE_A_LONG_RANDOM_SECRET
+AUTH_COOKIE_SECURE=true
 ```
 
-When `AUTO_CREATE_SCHEMA=false`, apply migrations before starting the API:
+Do not commit production secrets.
 
-```bash
-python -m alembic upgrade head
-```
+## Frontend
 
-> Do not commit real database passwords, API keys or other secrets to Git.
-
-# Frontend Setup
-
-Open a **second terminal** from the repository root.
+Open a second terminal:
 
 ```bash
 cd frontend
@@ -197,187 +166,89 @@ Open:
 http://localhost:5173
 ```
 
-The frontend does **not require an environment file for local development**. Vite proxies frontend requests automatically:
+No frontend `.env` is required for local development. Vite proxies `/api/*` to `http://localhost:8000`.
 
-```text
-/api/*  -> http://localhost:8000
-/health -> http://localhost:8000
-```
-
-Therefore, keep the backend running on port `8000` while using the frontend development server.
-
-## Frontend production build
+## Frontend production verification
 
 ```bash
 cd frontend
-npm install
 npm run typecheck
 npm run build
 ```
 
-The production output is generated in:
+# Docker
 
-```text
-frontend/dist/
-```
+The Docker stack intentionally requires you to supply a JWT secret.
 
-# Copy-Paste Codebox Commands
-
-If your IDE or cloud Codebox provides separate terminal tabs, use the following.
-
-## Terminal 1 — Backend
-
-### Windows
+### macOS / Linux
 
 ```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-python -m alembic upgrade head
-python -m uvicorn app.main:app --reload --port 8000
-```
-
-### macOS / Linux / most cloud Codeboxes
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-python -m alembic upgrade head
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-## Terminal 2 — Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev -- --host 0.0.0.0
-```
-
-For a local machine, browse to:
-
-```text
-http://localhost:5173
-```
-
-For a browser-based Codebox, expose/open port `5173` for the frontend and port `8000` if you want to access FastAPI/Swagger directly.
-
-# Run Everything with Docker
-
-If Docker and Docker Compose are installed, this is the easiest full-stack startup method:
-
-```bash
+export JWT_SECRET="replace-with-a-random-secret-longer-than-32-characters"
 docker compose up --build
 ```
 
-Then open:
+### PowerShell
 
-```text
-http://localhost:8080
-```
-
-The backend container runs the Alembic migrations before starting FastAPI. The production frontend container reverse-proxies API requests to the backend service.
-
-Stop the stack with:
-
-```bash
-docker compose down
-```
-
-To rebuild after dependency or Dockerfile changes:
-
-```bash
-docker compose down
+```powershell
+$env:JWT_SECRET="replace-with-a-random-secret-longer-than-32-characters"
 docker compose up --build
 ```
 
-# Run Backend Tests
+Open `http://localhost:8080`.
+
+The backend container runs `alembic upgrade head` before serving requests.
+
+# Authentication behavior
+
+Citizen accounts require a Gmail-format address ending in `@gmail.com` and a password with at least 10 characters, uppercase, lowercase, a number and a special character. Passwords are stored as Argon2 hashes. The browser session is carried by an HttpOnly cookie rather than frontend local storage.
+
+Gmail ownership itself is **not** verified in this hackathon prototype. A real production deployment should add OTP/email-link verification.
+
+### Roles
+
+- `CITIZEN` — can submit, analyze, track and list their own complaints
+- `OFFICER` — can access the department queue and update ticket state
+- `ADMIN` — can access staff operations and analytics
+
+Public sign-up cannot choose a staff role. Staff accounts should be provisioned by an administrator or identity provider in a real deployment.
+
+# AI analysis flow
+
+```text
+Citizen complaint in natural language
+        ↓
+Language Detection Agent
+        ↓
+Complaint Understanding Agent
+        ↓
+Entity & Location Agent
+        ↓
+Priority & Urgency Agent
+        ↓
+Missing Information Agent
+        ↓
+Department Routing Agent
+        ↓
+Ticket Agent
+        ↓
+Resolution Recommendation Agent
+        ↓
+Citizen Response Agent
+        ↓
+SLA Monitoring / Escalation
+```
+
+The UI intentionally does **not** provide preset citizen complaint scenarios. The Command Center also accepts a complaint typed by the user so judges can inspect the real pipeline output.
+
+# Tests
 
 ```bash
 cd backend
 python -m pytest -q
 ```
 
-The suite covers the core acceptance flows including water supply, potholes, garbage collection, streetlights, Marathi complaints, ticket creation, duplicate detection, safe idempotent retries, API readiness, ticket status transitions and SLA escalation.
+Current backend coverage includes authentication, Gmail/password validation, session protection, citizen/staff authorization boundaries, English acceptance cases, automatic Marathi detection, multilingual classification, clarification, duplicate detection, idempotency, ticket lifecycle and SLA escalation.
 
-# Useful API Endpoints
+# Prototype boundaries
 
-```text
-GET    /health
-GET    /ready
-POST   /api/v1/complaints/analyze
-POST   /api/v1/tickets
-GET    /api/v1/tickets
-GET    /api/v1/tickets/{ticket_code}
-PATCH  /api/v1/tickets/{ticket_code}/status
-POST   /api/v1/tickets/{ticket_code}/simulate-breach
-GET    /api/v1/analytics
-```
-
-`POST /api/v1/tickets` supports the `Idempotency-Key` header so a client can safely retry ticket creation without unintentionally creating duplicate tickets.
-
-# Demo Flow
-
-A primary demo complaint is:
-
-```text
-There has been no water supply in our area for three days and nobody is responding.
-```
-
-Expected analysis:
-
-```text
-Category: Water Supply
-Duration: 3 days
-Priority: HIGH
-Department: Water Supply Department
-Location: Missing
-```
-
-The system asks for missing location information. Enter for example:
-
-```text
-Shivaji Nagar
-```
-
-The application can then create a dynamic ticket such as:
-
-```text
-CR-XXXX
-```
-
-The ticket includes its category, priority, department, location, status, SLA, recommendation, citizen response and audit timeline.
-
-# CI Verification
-
-Every push to `main` runs checks for:
-
-```text
-Backend dependency installation
-Fresh-database Alembic migration
-Python compile check
-Backend pytest suite
-Frontend dependency installation
-TypeScript typecheck
-Production Vite build
-```
-
-# Prototype Boundaries
-
-CivicResolve AI is currently a **hackathon prototype**. It intentionally does not claim:
-
-- official government database access
-- official government dispatch
-- official SLA policy
-- real government complaint statistics
-- scientifically validated AI accuracy
-- production deployment by a municipality
-
-Prototype SLA values and analytics are labelled accordingly in the application.
-
-For more technical and operational details, see [`DEVELOPMENT.md`](DEVELOPMENT.md).
+CivicResolve AI is still a hackathon prototype. It does not claim official government integration, official SLA policies, real government dispatch, real government statistics, verified Gmail ownership or scientifically validated universal-language accuracy.
