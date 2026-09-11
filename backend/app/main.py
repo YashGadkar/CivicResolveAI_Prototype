@@ -13,6 +13,7 @@ from .capability_routes import router as capability_router
 from .config import get_settings
 from .core_routes import router as core_router
 from .database import Base, engine, get_db
+from .intelligence_routes import router as intelligence_router
 from .platform_routes import router as platform_router
 
 settings = get_settings()
@@ -47,6 +48,7 @@ app.add_middleware(
 )
 
 app.include_router(core_router)
+app.include_router(intelligence_router)
 app.include_router(platform_router)
 app.include_router(capability_router)
 
