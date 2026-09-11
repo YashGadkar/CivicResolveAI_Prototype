@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session, selectinload
 from ..models import AuditEvent, Ticket
 from ..schemas import ComplaintAnalysis, DuplicateCandidate, TicketCreateRequest, TicketResponse
 
-
 SLA_HOURS = {"CRITICAL": 2, "HIGH": 8, "MEDIUM": 24, "LOW": 72}
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "SUBMITTED": {"ASSIGNED", "IN_PROGRESS", "RESOLVED", "ESCALATED"},
@@ -40,9 +39,7 @@ def add_audit(db: Session, ticket: Ticket, event: str, detail: str) -> None:
 
 
 def ticket_code() -> str:
-    date_part = utcnow().strftime("%y%m%d")
-    random_part = uuid.uuid4().hex[:6].upper()
-    return f"CR-{date_part}-{random_part}"
+    return f"CR-{utcnow().strftime('%y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
 
 def sla_deadline(priority: str) -> datetime:
@@ -73,8 +70,6 @@ def text_similarity(left: str, right: str) -> float:
 
 
 def request_digest(payload: TicketCreateRequest) -> str:
-    # Never persist a digest of an unstable object representation. Canonical JSON makes
-    # the idempotency comparison consistent across processes and Python versions.
     serialized = json.dumps(payload.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
@@ -88,13 +83,7 @@ def find_duplicates(db: Session, analysis: ComplaintAnalysis, complaint: str, li
         if analysis.location and ticket.location.casefold() == analysis.location.casefold():
             similarity = min(1.0, similarity + 0.18)
         if similarity >= 0.5:
-            candidates.append(
-                DuplicateCandidate(
-                    ticket_code=ticket.ticket_code,
-                    summary=f"{ticket.category} complaint in {ticket.location}",
-                    similarity=round(similarity, 2),
-                )
-            )
+            candidates.append(DuplicateCandidate(ticket_code=ticket.ticket_code, summary=f"{ticket.category} complaint in {ticket.location}", similarity=round(similarity, 2)))
     candidates.sort(key=lambda item: item.similarity, reverse=True)
     return candidates[:limit]
 
@@ -104,6 +93,7 @@ def create_ticket(
     payload: TicketCreateRequest,
     analysis: ComplaintAnalysis,
     idempotency_key: str | None = None,
+    submitted_by_user_id: str | None = None,
 ) -> Ticket:
     if analysis.missing_information:
         raise ValueError("Required clarification is missing before ticket creation.")
@@ -113,11 +103,7 @@ def create_ticket(
     digest = request_digest(payload)
     normalized_key = idempotency_key.strip() if idempotency_key else None
     if normalized_key:
-        existing = db.scalar(
-            select(Ticket)
-            .where(Ticket.idempotency_key == normalized_key)
-            .options(selectinload(Ticket.audit_events))
-        )
+        existing = db.scalar(select(Ticket).where(Ticket.idempotency_key == normalized_key).options(selectinload(Ticket.audit_events)))
         if existing:
             if existing.request_digest != digest:
                 raise IdempotencyConflict("Idempotency-Key was already used for a different ticket request.")
@@ -127,6 +113,7 @@ def create_ticket(
         ticket_code=ticket_code(),
         idempotency_key=normalized_key,
         request_digest=digest if normalized_key else None,
+        submitted_by_user_id=submitted_by_user_id,
         complaint=payload.complaint,
         language=analysis.language,
         location=analysis.location,
@@ -152,37 +139,27 @@ def create_ticket(
         db.rollback()
         if not normalized_key:
             raise
-        existing = db.scalar(
-            select(Ticket)
-            .where(Ticket.idempotency_key == normalized_key)
-            .options(selectinload(Ticket.audit_events))
-        )
+        existing = db.scalar(select(Ticket).where(Ticket.idempotency_key == normalized_key).options(selectinload(Ticket.audit_events)))
         if existing and existing.request_digest == digest:
             return existing
         raise IdempotencyConflict("Idempotency-Key was already used for a different ticket request.") from exc
 
     add_audit(db, ticket, "COMPLAINT_SUBMITTED", "Citizen complaint submitted.")
-    add_audit(db, ticket, "AI_ANALYZED", f"AI-assisted deterministic analysis classified {analysis.category}.")
+    add_audit(db, ticket, "AI_ANALYZED", f"Automatic multilingual analysis classified {analysis.category} and detected {analysis.language}.")
     add_audit(db, ticket, "PRIORITY_ASSIGNED", f"Priority assigned: {analysis.priority}.")
     add_audit(db, ticket, "DEPARTMENT_ROUTED", f"Routed to {analysis.department}.")
     add_audit(db, ticket, "TICKET_CREATED", f"Ticket {ticket.ticket_code} created with configurable prototype SLA.")
     if payload.duplicate_of:
         add_audit(db, ticket, "RELATED_TICKET_LINKED", f"Citizen linked possible related ticket {payload.duplicate_of}.")
-
     db.commit()
     return get_ticket(db, ticket.ticket_code)
 
 
 def get_ticket(db: Session, code: str) -> Ticket:
-    stmt = (
-        select(Ticket)
-        .where(func.upper(Ticket.ticket_code) == code.upper())
-        .options(selectinload(Ticket.audit_events))
-    )
+    stmt = select(Ticket).where(func.upper(Ticket.ticket_code) == code.upper()).options(selectinload(Ticket.audit_events))
     ticket = db.scalar(stmt)
     if not ticket:
         raise LookupError(code)
-
     new_state = compute_sla_state(ticket)
     if new_state != ticket.sla_state:
         ticket.sla_state = new_state
@@ -201,19 +178,17 @@ def list_tickets(db: Session, limit: int = 100) -> list[Ticket]:
     return list(db.scalars(stmt).all())
 
 
-def update_status(
-    db: Session,
-    ticket: Ticket,
-    status: str,
-    note: str | None = None,
-    assigned_officer: str | None = None,
-) -> Ticket:
+def list_user_tickets(db: Session, user_id: str, limit: int = 100) -> list[Ticket]:
+    stmt = select(Ticket).where(Ticket.submitted_by_user_id == user_id).options(selectinload(Ticket.audit_events)).order_by(Ticket.created_at.desc()).limit(limit)
+    return list(db.scalars(stmt).all())
+
+
+def update_status(db: Session, ticket: Ticket, status: str, note: str | None = None, assigned_officer: str | None = None) -> Ticket:
     previous = ticket.status
     if status == previous:
         return get_ticket(db, ticket.ticket_code)
     if status not in VALID_TRANSITIONS.get(previous, set()):
         raise InvalidStatusTransition(f"Ticket cannot transition from {previous} to {status}.")
-
     ticket.status = status
     if assigned_officer is not None:
         ticket.assigned_officer = assigned_officer or None
@@ -263,10 +238,7 @@ def to_response(ticket: Ticket) -> TicketResponse:
         duplicate_of=ticket.duplicate_of,
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
-        audit_events=[
-            {"event": event.event, "detail": event.detail, "created_at": event.created_at}
-            for event in ticket.audit_events
-        ],
+        audit_events=[{"event": event.event, "detail": event.detail, "created_at": event.created_at} for event in ticket.audit_events],
     )
 
 
@@ -278,7 +250,6 @@ def analytics(db: Session) -> dict:
     closed_without_breach = sum(1 for t in tickets if t.status == "RESOLVED" and compute_sla_state(t) != "BREACHED")
     resolved = status_counts.get("RESOLVED", 0)
     compliance = (closed_without_breach / resolved * 100) if resolved else 100.0
-
     return {
         "label": "Synthetic / Demo Data",
         "total": total,

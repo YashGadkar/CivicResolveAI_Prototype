@@ -1,5 +1,13 @@
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
 export interface AgentStage {
   name: string;
   status: "WAITING" | "PROCESSING" | "COMPLETED" | "ACTION REQUIRED";
@@ -25,6 +33,9 @@ export interface ComplaintAnalysis {
   clarification_questions: string[];
   resolution_recommendation: string[];
   language: string;
+  language_code: string;
+  detected_script: string;
+  analysis_mode: string;
   confidence: number;
   reasoning_summary: string;
   citizen_response: string;

@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     allowed_hosts: str = "*"
     api_prefix: str = "/api/v1"
     auto_create_schema: bool = True
+    jwt_secret: str = "development-only-change-me-please-replace-123456"
+    jwt_exp_hours: int = 8
+    auth_cookie_name: str = "civicresolve_session"
+    auth_cookie_secure: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -25,6 +29,12 @@ class Settings(BaseSettings):
     @property
     def allowed_host_list(self) -> list[str]:
         return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    def validate_security(self) -> None:
+        if self.environment.lower() == "production" and self.jwt_secret == "development-only-change-me-please-replace-123456":
+            raise RuntimeError("JWT_SECRET must be changed in production.")
+        if len(self.jwt_secret) < 32:
+            raise RuntimeError("JWT_SECRET must be at least 32 characters long.")
 
 
 @lru_cache

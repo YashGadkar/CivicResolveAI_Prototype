@@ -3,7 +3,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import text
@@ -11,13 +11,25 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .database import Base, engine, get_db
+from .models import User
 from .schemas import (
     AnalyzeComplaintRequest,
     AnalyticsResponse,
     ComplaintAnalysis,
+    LoginRequest,
+    SignUpRequest,
     TicketCreateRequest,
     TicketResponse,
     TicketStatusRequest,
+    UserResponse,
+)
+from .services.auth import (
+    AuthenticationError,
+    EmailAlreadyRegistered,
+    authenticate_user,
+    create_session_token,
+    create_user,
+    decode_session_token,
 )
 from .services.pipeline import analyze_complaint
 from .services.ticketing import (
@@ -28,6 +40,7 @@ from .services.ticketing import (
     find_duplicates,
     get_ticket,
     list_tickets,
+    list_user_tickets,
     simulate_breach,
     to_response,
     update_status,
@@ -40,8 +53,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Zero-config local developer mode remains convenient. Production containers set
-    # AUTO_CREATE_SCHEMA=false and apply reviewed Alembic migrations before serving.
+    settings.validate_security()
     if settings.auto_create_schema:
         Base.metadata.create_all(bind=engine)
     yield
@@ -49,8 +61,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.2.0",
-    description="AI-assisted civic complaint understanding and resolution prototype.",
+    version="0.3.0",
+    description="Multilingual AI-assisted civic complaint understanding and resolution prototype.",
     lifespan=lifespan,
 )
 
@@ -79,10 +91,12 @@ async def request_context(request: Request, call_next):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.path.startswith(f"{settings.api_prefix}/auth"):
+            response.headers["Cache-Control"] = "no-store"
         return response
     finally:
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
-        # Deliberately avoid query strings, request bodies, contact details and complaint text.
         logger.info(
             "request_complete request_id=%s method=%s path=%s status=%s duration_ms=%s",
             request_id,
@@ -91,6 +105,48 @@ async def request_context(request: Request, call_next):
             status_code,
             duration_ms,
         )
+
+
+def user_response(user: User) -> UserResponse:
+    return UserResponse(id=user.id, name=user.name, email=user.email, role=user.role, created_at=user.created_at)
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=token,
+        max_age=settings.jwt_exp_hours * 3600,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    token = request.cookies.get(settings.auth_cookie_name)
+    if not token:
+        raise HTTPException(status_code=401, detail="Sign in is required.")
+    try:
+        payload = decode_session_token(token)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=401, detail="Session expired. Please sign in again.") from exc
+    user = db.get(User, payload.get("sub"))
+    if not user:
+        raise HTTPException(status_code=401, detail="Session user no longer exists.")
+    return user
+
+
+def require_staff(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in {"OFFICER", "ADMIN"}:
+        raise HTTPException(status_code=403, detail="Officer or admin access is required.")
+    return current_user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Admin access is required.")
+    return current_user
 
 
 @app.get("/health")
@@ -102,17 +158,51 @@ def health() -> dict[str, str]:
 def ready(db: Session = Depends(get_db)) -> dict[str, str]:
     try:
         db.execute(text("SELECT 1"))
-    except Exception as exc:  # pragma: no cover - exercised by infrastructure failures
+    except Exception as exc:
         logger.exception("database_readiness_failed")
         raise HTTPException(status_code=503, detail="Database is not ready.") from exc
     return {"status": "ready", "database": "reachable"}
 
 
+@app.post(f"{settings.api_prefix}/auth/signup", response_model=UserResponse, status_code=201)
+def signup(payload: SignUpRequest, response: Response, db: Session = Depends(get_db)) -> UserResponse:
+    try:
+        user = create_user(db, payload.name, payload.email, payload.password)
+    except EmailAlreadyRegistered as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    set_session_cookie(response, create_session_token(user))
+    return user_response(user)
+
+
+@app.post(f"{settings.api_prefix}/auth/login", response_model=UserResponse)
+def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)) -> UserResponse:
+    try:
+        user = authenticate_user(db, payload.email, payload.password)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    set_session_cookie(response, create_session_token(user))
+    return user_response(user)
+
+
+@app.post(f"{settings.api_prefix}/auth/logout", status_code=204)
+def logout(response: Response) -> None:
+    response.delete_cookie(settings.auth_cookie_name, path="/")
+
+
+@app.get(f"{settings.api_prefix}/auth/me", response_model=UserResponse)
+def me(current_user: User = Depends(get_current_user)) -> UserResponse:
+    return user_response(current_user)
+
+
 @app.post(f"{settings.api_prefix}/complaints/analyze", response_model=ComplaintAnalysis)
-def analyze(payload: AnalyzeComplaintRequest, db: Session = Depends(get_db)) -> ComplaintAnalysis:
+def analyze(
+    payload: AnalyzeComplaintRequest,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+) -> ComplaintAnalysis:
     result = analyze_complaint(
         complaint=payload.complaint,
-        selected_language=payload.language,
+        selected_language="Auto",
         supplied_location=payload.location,
         landmark=payload.landmark,
     )
@@ -125,20 +215,18 @@ def create(
     payload: TicketCreateRequest,
     db: Session = Depends(get_db),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=128),
+    current_user: User = Depends(get_current_user),
 ) -> TicketResponse:
     result = analyze_complaint(
         complaint=payload.complaint,
-        selected_language=payload.language,
+        selected_language="Auto",
         supplied_location=payload.location,
         landmark=payload.landmark,
     )
     if result.missing_information:
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "Clarification required before ticket creation.", "analysis": result.model_dump()},
-        )
+        raise HTTPException(status_code=422, detail={"message": "Clarification required before ticket creation.", "analysis": result.model_dump()})
     try:
-        ticket = create_ticket(db, payload, result, idempotency_key=idempotency_key)
+        ticket = create_ticket(db, payload, result, idempotency_key=idempotency_key, submitted_by_user_id=current_user.id)
     except IdempotencyConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -146,24 +234,37 @@ def create(
     return to_response(ticket)
 
 
+@app.get(f"{settings.api_prefix}/tickets/mine", response_model=list[TicketResponse])
+def my_tickets(
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[TicketResponse]:
+    return [to_response(get_ticket(db, item.ticket_code)) for item in list_user_tickets(db, current_user.id, limit)]
+
+
 @app.get(f"{settings.api_prefix}/tickets", response_model=list[TicketResponse])
 def tickets(
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
+    _current_user: User = Depends(require_staff),
 ) -> list[TicketResponse]:
-    result: list[TicketResponse] = []
-    for item in list_tickets(db, limit):
-        # get_ticket applies automatic SLA transitions atomically when needed.
-        result.append(to_response(get_ticket(db, item.ticket_code)))
-    return result
+    return [to_response(get_ticket(db, item.ticket_code)) for item in list_tickets(db, limit)]
 
 
 @app.get(f"{settings.api_prefix}/tickets/{{ticket_code}}", response_model=TicketResponse)
-def ticket(ticket_code: str, db: Session = Depends(get_db)) -> TicketResponse:
+def ticket(
+    ticket_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TicketResponse:
     try:
-        return to_response(get_ticket(db, ticket_code))
+        current = get_ticket(db, ticket_code)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Ticket not found.") from exc
+    if current_user.role not in {"OFFICER", "ADMIN"} and current.submitted_by_user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Ticket not found.")
+    return to_response(current)
 
 
 @app.patch(f"{settings.api_prefix}/tickets/{{ticket_code}}/status", response_model=TicketResponse)
@@ -171,16 +272,11 @@ def change_status(
     ticket_code: str,
     payload: TicketStatusRequest,
     db: Session = Depends(get_db),
+    _current_user: User = Depends(require_staff),
 ) -> TicketResponse:
     try:
         current = get_ticket(db, ticket_code)
-        updated = update_status(
-            db,
-            current,
-            status=payload.status,
-            note=payload.note,
-            assigned_officer=payload.assigned_officer,
-        )
+        updated = update_status(db, current, status=payload.status, note=payload.note, assigned_officer=payload.assigned_officer)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Ticket not found.") from exc
     except InvalidStatusTransition as exc:
@@ -189,7 +285,11 @@ def change_status(
 
 
 @app.post(f"{settings.api_prefix}/tickets/{{ticket_code}}/simulate-breach", response_model=TicketResponse)
-def breach(ticket_code: str, db: Session = Depends(get_db)) -> TicketResponse:
+def breach(
+    ticket_code: str,
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_staff),
+) -> TicketResponse:
     try:
         current = get_ticket(db, ticket_code)
         return to_response(simulate_breach(db, current))
@@ -200,5 +300,8 @@ def breach(ticket_code: str, db: Session = Depends(get_db)) -> TicketResponse:
 
 
 @app.get(f"{settings.api_prefix}/analytics", response_model=AnalyticsResponse)
-def get_analytics(db: Session = Depends(get_db)) -> AnalyticsResponse:
+def get_analytics(
+    db: Session = Depends(get_db),
+    _current_user: User = Depends(require_admin),
+) -> AnalyticsResponse:
     return AnalyticsResponse(**analytics(db))

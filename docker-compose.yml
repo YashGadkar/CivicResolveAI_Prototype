@@ -8,6 +8,10 @@ services:
       CORS_ORIGINS: http://localhost:8080
       ALLOWED_HOSTS: localhost,127.0.0.1
       AUTO_CREATE_SCHEMA: "false"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET before running docker compose}
+      JWT_EXP_HOURS: "8"
+      AUTH_COOKIE_NAME: civicresolve_session
+      AUTH_COOKIE_SECURE: "false"
     volumes:
       - civicresolve_data:/data
     expose:
