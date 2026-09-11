@@ -7,6 +7,8 @@ venv/
 backend/civicresolve.db
 backend/ci-migration.db
 backend/.env
+backend/uploads/
+uploads/
 
 # Node
 node_modules/
