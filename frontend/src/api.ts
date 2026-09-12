@@ -1,4 +1,4 @@
-import type { Analytics, AssistantResponse, ComplaintAnalysis, ComplaintBatchAnalysis, EnrichedTicket, Incident, LocationVerification, PlatformAnalytics, StaffTicket, Ticket, User } from "./types";
+import type { Analytics, AssistantResponse, ComplaintAnalysis, ComplaintBatchAnalysis, EnrichedTicket, Incident, LocationVerification, PlatformAnalytics, StaffMember, StaffTicket, Ticket, User } from "./types";
 
 const API = import.meta.env.VITE_API_URL || "/api/v1";
 const pendingTicketKeys = new Map<string, string>();
@@ -74,6 +74,29 @@ async function uploadEvidence(code: string, file: File, kind = "CITIZEN_EVIDENCE
   return request<EnrichedTicket>(`/platform/tickets/${encodeURIComponent(code)}/evidence?kind=${encodeURIComponent(kind)}`, { method: "POST", body: form });
 }
 
+async function downloadEvidence(attachmentId: string, filename: string) {
+  let response: Response;
+  try {
+    response = await fetch(`${API}/platform/attachments/${encodeURIComponent(attachmentId)}`, { credentials: "include" });
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error(localBackendHint());
+    throw error;
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ detail: "Evidence could not be opened." }));
+    throw new Error(typeof payload.detail === "string" ? payload.detail : "Evidence could not be opened.");
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
 export const api = {
   signUp: (payload: { name: string; email: string; password: string }) => request<User>("/auth/signup", { method: "POST", body: JSON.stringify(payload) }),
   login: (payload: { email: string; password: string }) => request<User>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
@@ -98,6 +121,7 @@ export const api = {
   platformTicket: (code: string) => request<EnrichedTicket>(`/platform/tickets/${encodeURIComponent(code)}`),
   platformStaffTickets: () => request<EnrichedTicket[]>("/platform/staff/tickets"),
   staffDepartments: () => request<string[]>("/platform/staff/departments"),
+  staffMembers: () => request<StaffMember[]>("/platform/staff/members"),
   translationLanguages: () => request<TranslationLanguage[]>("/platform/staff/translation-languages"),
   translateTicket: (code: string, targetLanguage: string) => request<TranslationResult>(`/platform/staff/tickets/${encodeURIComponent(code)}/translate`, { method: "POST", body: JSON.stringify({ target_language: targetLanguage }) }),
   deleteTicket: (code: string) => request<EnrichedTicket>(`/platform/tickets/${encodeURIComponent(code)}`, { method: "DELETE" }),
@@ -107,6 +131,7 @@ export const api = {
   transferTicket: (code: string, department: string, reason: string) => request<EnrichedTicket>(`/platform/staff/tickets/${encodeURIComponent(code)}/transfer`, { method: "POST", body: JSON.stringify({ department, reason }) }),
   assignTicket: (code: string, officer?: string) => request<EnrichedTicket>(`/platform/staff/tickets/${encodeURIComponent(code)}/assign`, { method: "POST", body: JSON.stringify({ officer: officer || null }) }),
   uploadEvidence,
+  downloadEvidence,
   evidenceUrl: (attachmentId: string) => `${API}/platform/attachments/${encodeURIComponent(attachmentId)}`,
   incidents: () => request<Incident[]>("/platform/incidents"),
   platformAnalytics: () => request<PlatformAnalytics>("/platform/analytics"),
