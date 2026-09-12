@@ -12,7 +12,7 @@ export interface ComplaintAnalysis {
   clarification_questions: string[]; resolution_recommendation: string[]; language: string; language_code: string;
   detected_script: string; analysis_mode: string; confidence: number; reasoning_summary: string; citizen_response: string;
   agent_trace: AgentStage[]; duplicate_candidates: DuplicateCandidate[];
-  location_verified?: boolean | null; location_display_name?: string | null; location_verification_message?: string | null;
+  location_verified?: boolean | null; location_display_name?: string | null; location_latitude?: number | null; location_longitude?: number | null; location_verification_message?: string | null;
 }
 
 export interface ComplaintBatchAnalysis { language: string; language_code: string; issue_count: number; issues: ComplaintAnalysis[]; }
