@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowRightLeft, Building2, FileUp, Languages, MapPin, Ph
 import { api } from "../api";
 import type { TranslationLanguage, TranslationResult } from "../api";
 import { Kpi, NoticeState, Page, ProgressBar, Toast } from "../components/app-ui";
+import { ProblemMap } from "../components/problem-map";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -159,6 +160,7 @@ function TicketDrawer({item,departments,languages,onClose,onChanged,notify}:{ite
         </Card>
 
         <div className="grid gap-4 md:grid-cols-2"><Info icon={<UserRound/>} title="Citizen"><b>{item.citizen?.name||"Unknown citizen"}</b><p>{item.citizen?.email||"No email available"}</p>{item.citizen?.contact&&<p><Phone className="mr-1 inline" size={13}/>{item.citizen.contact}</p>}</Info><Info icon={<MapPin/>} title="Location"><b>{t.location}</b><p>{[item.meta.ward,item.meta.zone,item.meta.city].filter(Boolean).join(" · ")||"No ward/zone metadata"}</p></Info></div>
+        <ProblemMap location={t.location} latitude={item.meta.latitude} longitude={item.meta.longitude} title="Problem location" />
         {item.meta.emergency&&<div className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-100"><AlertTriangle className="shrink-0"/><div><b>Potential immediate safety risk</b><p className="mt-1 text-xs leading-5 opacity-80">Prioritize human review. The platform does not replace emergency dispatch.</p></div></div>}
         {item.meta.related_reports>1&&<div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><b>{item.meta.related_reports} related citizen reports</b><p className="mt-1 text-xs leading-5">This ticket belongs to a broader incident cluster for the same category and location.</p></div>}
 
