@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
@@ -13,6 +14,7 @@ from .platform_schemas import (
     EnrichedTicketResponse,
     PlatformAnalyticsResponse,
     ResolutionRequest,
+    StaffMemberResponse,
     TransferRequest,
     TranslationRequest,
     TranslationResponse,
@@ -80,6 +82,17 @@ def _ticket_for_user(db: Session, code: str, user: User):
     return ticket
 
 
+def _assignee_details(db: Session, assigned_officer: str | None) -> StaffMemberResponse | None:
+    if not assigned_officer:
+        return None
+    value = assigned_officer.strip().casefold()
+    members = list(db.scalars(select(User).where(User.role.in_(["OFFICER", "ADMIN"]))).all())
+    for member in members:
+        if value in {member.email.casefold(), member.name.casefold()}:
+            return StaffMemberResponse(name=member.name, email=member.email, role=member.role)
+    return StaffMemberResponse(name=assigned_officer.strip(), email=None, role="TEAM")
+
+
 def _enriched(db: Session, ticket, user: User, include_citizen: bool = False) -> EnrichedTicketResponse:
     citizen = None
     if include_citizen and ticket.submitted_by_user_id:
@@ -91,6 +104,7 @@ def _enriched(db: Session, ticket, user: User, include_citizen: bool = False) ->
         meta=meta_response(db, ticket),
         attachments=[attachment_response(a) for a in ticket.attachments],
         citizen=citizen,
+        assignee=_assignee_details(db, ticket.assigned_officer),
     )
 
 
@@ -115,6 +129,12 @@ def staff_tickets(db: Session = Depends(get_db), user: User = Depends(staff_user
 @router.get("/staff/departments", response_model=list[str])
 def staff_departments(_user: User = Depends(staff_user)):
     return civic_departments()
+
+
+@router.get("/staff/members", response_model=list[StaffMemberResponse])
+def staff_members(db: Session = Depends(get_db), _user: User = Depends(staff_user)):
+    members = list(db.scalars(select(User).where(User.role.in_(["OFFICER", "ADMIN"])).order_by(User.role, User.name)).all())
+    return [StaffMemberResponse(name=member.name, email=member.email, role=member.role) for member in members]
 
 
 @router.get("/staff/translation-languages", response_model=list[dict[str, str]])
@@ -209,11 +229,16 @@ def download_evidence(attachment_id: str, db: Session = Depends(get_db), user: U
         attachment = get_attachment(db, attachment_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Evidence not found.") from exc
-    ticket = _ticket_for_user(db, get_ticket(db, attachment.ticket.ticket_code).ticket_code, user)
+    _ticket_for_user(db, attachment.ticket.ticket_code, user)
     path = attachment_path(attachment)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Evidence file is unavailable.")
-    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
+    return FileResponse(
+        path,
+        media_type=attachment.content_type,
+        filename=attachment.original_name,
+        content_disposition_type="inline",
+    )
 
 
 @router.get("/incidents")
