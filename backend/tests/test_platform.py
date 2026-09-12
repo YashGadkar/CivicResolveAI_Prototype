@@ -98,6 +98,8 @@ def test_employee_assignment_transfer_resolution_and_citizen_reopen(monkeypatch)
         assigned = client.post(f"/api/v1/platform/staff/tickets/{code}/assign", json={"officer": "Road Crew A"})
         assert assigned.status_code == 200
         assert assigned.json()["ticket"]["assigned_officer"] == "Road Crew A"
+        assert assigned.json()["assignee"]["name"] == "Road Crew A"
+        assert assigned.json()["assignee"]["role"] == "TEAM"
         assert assigned.json()["ticket"]["status"] == "ASSIGNED"
 
         invalid = client.post(
@@ -113,6 +115,7 @@ def test_employee_assignment_transfer_resolution_and_citizen_reopen(monkeypatch)
         assert transferred.status_code == 200
         assert transferred.json()["ticket"]["department"] == "Drainage & Sewerage Department"
         assert transferred.json()["ticket"]["assigned_officer"] is None
+        assert transferred.json()["assignee"] is None
         assert transferred.json()["ticket"]["status"] == "SUBMITTED"
         transfer_events = [e for e in transferred.json()["ticket"]["audit_events"] if e["event"] == "DEPARTMENT_TRANSFERRED"]
         assert transfer_events
@@ -137,6 +140,55 @@ def test_employee_assignment_transfer_resolution_and_citizen_reopen(monkeypatch)
         assert reopened.status_code == 200
         assert reopened.json()["ticket"]["status"] == "IN_PROGRESS"
         assert reopened.json()["meta"]["citizen_confirmation"] == "REOPENED"
+
+
+def test_citizen_sees_real_assignee_and_staff_resolution_evidence(monkeypatch, tmp_path):
+    monkeypatch.setattr(platform_service, "UPLOAD_ROOT", tmp_path)
+    with build_client(monkeypatch) as client:
+        citizen = signup(client, "evidence.owner@gmail.com")
+        ticket = create_ticket(client, "A streetlight is broken and the road is dark at night.")
+        code = ticket["ticket_code"]
+        client.post("/api/v1/auth/logout")
+
+        seed_officer(client)
+        assert client.post(
+            "/api/v1/auth/employee-login",
+            json={"email": "officer@civicresolve.test", "password": "OfficerPass#123"},
+        ).status_code == 200
+
+        members = client.get("/api/v1/platform/staff/members")
+        assert members.status_code == 200
+        assert any(member["email"] == "officer@civicresolve.test" for member in members.json())
+
+        assigned = client.post(
+            f"/api/v1/platform/staff/tickets/{code}/assign",
+            json={"officer": "officer@civicresolve.test"},
+        )
+        assert assigned.status_code == 200
+        assert assigned.json()["assignee"] == {
+            "name": "Ward Officer",
+            "email": "officer@civicresolve.test",
+            "role": "OFFICER",
+        }
+
+        uploaded = client.post(
+            f"/api/v1/platform/tickets/{code}/evidence?kind=RESOLUTION_EVIDENCE",
+            files={"file": ("completion-proof.png", b"demo-proof", "image/png")},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        resolution = next(a for a in uploaded.json()["attachments"] if a["kind"] == "RESOLUTION_EVIDENCE")
+
+        client.post("/api/v1/auth/logout")
+        assert client.post("/api/v1/auth/login", json={"email": citizen["email"], "password": PASSWORD}).status_code == 200
+        detail = client.get(f"/api/v1/platform/tickets/{code}")
+        assert detail.status_code == 200
+        assert detail.json()["assignee"]["name"] == "Ward Officer"
+        assert any(a["id"] == resolution["id"] and a["kind"] == "RESOLUTION_EVIDENCE" for a in detail.json()["attachments"])
+
+        evidence = client.get(f"/api/v1/platform/attachments/{resolution['id']}")
+        assert evidence.status_code == 200
+        assert evidence.content == b"demo-proof"
+        assert evidence.headers["content-disposition"].startswith("inline")
 
 
 def test_staff_translation_available_to_officer_and_admin(monkeypatch):
