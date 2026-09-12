@@ -14,6 +14,8 @@ from .platform_schemas import (
     PlatformAnalyticsResponse,
     ResolutionRequest,
     TransferRequest,
+    TranslationRequest,
+    TranslationResponse,
 )
 from .services.assistant import answer_assistant
 from .services.auth import AuthenticationError, decode_session_token
@@ -22,6 +24,7 @@ from .services.platform import (
     assign_ticket,
     attachment_path,
     attachment_response,
+    civic_departments,
     confirm_resolution,
     ensure_meta,
     get_attachment,
@@ -35,6 +38,7 @@ from .services.platform import (
     transfer_ticket,
 )
 from .services.ticketing import get_ticket, to_response
+from .services.translation import TranslationError, available_languages, translate_text
 
 settings = get_settings()
 router = APIRouter(prefix=f"{settings.api_prefix}/platform", tags=["Civic platform"])
@@ -108,6 +112,16 @@ def staff_tickets(db: Session = Depends(get_db), user: User = Depends(staff_user
     return [_enriched(db, t, user, include_citizen=True) for t in list_visible_tickets(db, include_archived=False, staff=True)]
 
 
+@router.get("/staff/departments", response_model=list[str])
+def staff_departments(_user: User = Depends(staff_user)):
+    return civic_departments()
+
+
+@router.get("/staff/translation-languages", response_model=list[dict[str, str]])
+def staff_translation_languages(_user: User = Depends(staff_user)):
+    return available_languages()
+
+
 @router.delete("/tickets/{ticket_code}", response_model=EnrichedTicketResponse)
 def delete_ticket(ticket_code: str, db: Session = Depends(get_db), user: User = Depends(current_user)):
     ticket = _ticket_for_user(db, ticket_code, user)
@@ -135,6 +149,15 @@ def citizen_confirm(ticket_code: str, payload: CitizenResolutionRequest, db: Ses
     return _enriched(db, get_ticket(db, ticket_code), user)
 
 
+@router.post("/staff/tickets/{ticket_code}/translate", response_model=TranslationResponse)
+def staff_translate(ticket_code: str, payload: TranslationRequest, db: Session = Depends(get_db), user: User = Depends(staff_user)):
+    ticket = _ticket_for_user(db, ticket_code, user)
+    try:
+        return TranslationResponse(**translate_text(ticket.complaint, payload.target_language, ticket.language))
+    except TranslationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/staff/tickets/{ticket_code}/resolve", response_model=EnrichedTicketResponse)
 def staff_resolve(ticket_code: str, payload: ResolutionRequest, db: Session = Depends(get_db), user: User = Depends(staff_user)):
     ticket = _ticket_for_user(db, ticket_code, user)
@@ -145,7 +168,10 @@ def staff_resolve(ticket_code: str, payload: ResolutionRequest, db: Session = De
 @router.post("/staff/tickets/{ticket_code}/transfer", response_model=EnrichedTicketResponse)
 def staff_transfer(ticket_code: str, payload: TransferRequest, db: Session = Depends(get_db), user: User = Depends(staff_user)):
     ticket = _ticket_for_user(db, ticket_code, user)
-    transfer_ticket(db, ticket, payload.department, payload.reason)
+    try:
+        transfer_ticket(db, ticket, payload.department, payload.reason, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _enriched(db, get_ticket(db, ticket_code), user, include_citizen=True)
 
 
