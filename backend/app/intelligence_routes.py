@@ -144,6 +144,8 @@ def _verify_issue_location(issue: ComplaintAnalysis, cache: dict[str, LocationVe
 
     issue.location_verified = verification.valid
     issue.location_display_name = verification.canonical_name
+    issue.location_latitude = verification.latitude
+    issue.location_longitude = verification.longitude
     issue.location_verification_message = verification.message
     if verification.valid and verification.canonical_name:
         issue.location = verification.canonical_name
