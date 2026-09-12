@@ -129,6 +129,8 @@ class ComplaintAnalysis(BaseModel):
     duplicate_candidates: list[DuplicateCandidate] = Field(default_factory=list)
     location_verified: bool | None = None
     location_display_name: str | None = None
+    location_latitude: float | None = None
+    location_longitude: float | None = None
     location_verification_message: str | None = None
 
 
