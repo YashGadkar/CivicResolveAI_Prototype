@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     geocoder_country_codes: str = "in"
     geocoder_timeout_seconds: float = 4.0
     geocoder_user_agent: str = "CivicResolveAI/0.5 civic-resolution-prototype"
+    translation_base_url: str = "https://translate.googleapis.com/translate_a/single"
+    translation_timeout_seconds: float = 8.0
 
     model_config = SettingsConfigDict(
         env_file=".env",
