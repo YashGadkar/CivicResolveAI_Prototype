@@ -55,6 +55,19 @@ class AssignmentRequest(BaseModel):
     officer: str | None = Field(default=None, max_length=120)
 
 
+class TranslationRequest(BaseModel):
+    target_language: str = Field(min_length=2, max_length=16, pattern=r"^[A-Za-z-]+$")
+
+
+class TranslationResponse(BaseModel):
+    original_text: str
+    translated_text: str
+    source_language: str
+    target_language: str
+    target_language_name: str
+    provider: str
+
+
 class AssistantRequest(BaseModel):
     message: str = Field(min_length=2, max_length=5000)
 
