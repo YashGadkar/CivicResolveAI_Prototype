@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.main import app
 from app.services.auth import create_user
+import app.platform_routes as platform_routes
 import app.services.platform as platform_service
 
 PASSWORD = "StrongPass#123"
@@ -40,6 +41,11 @@ def signup(client: TestClient, email="platform.citizen@gmail.com"):
 def seed_officer(client: TestClient):
     with Session(client.app.state.test_engine) as db:
         create_user(db, "Ward Officer", "officer@civicresolve.test", "OfficerPass#123", role="OFFICER")
+
+
+def seed_admin(client: TestClient):
+    with Session(client.app.state.test_engine) as db:
+        create_user(db, "Civic Admin", "admin@civicresolve.test", "AdminPass#123", role="ADMIN")
 
 
 def create_ticket(client: TestClient, complaint="Garbage has not been collected for five days and the smell is severe."):
@@ -85,16 +91,33 @@ def test_employee_assignment_transfer_resolution_and_citizen_reopen(monkeypatch)
         )
         assert login.status_code == 200
 
+        departments = client.get("/api/v1/platform/staff/departments")
+        assert departments.status_code == 200
+        assert "Drainage & Sewerage Department" in departments.json()
+
         assigned = client.post(f"/api/v1/platform/staff/tickets/{code}/assign", json={"officer": "Road Crew A"})
         assert assigned.status_code == 200
         assert assigned.json()["ticket"]["assigned_officer"] == "Road Crew A"
+        assert assigned.json()["ticket"]["status"] == "ASSIGNED"
+
+        invalid = client.post(
+            f"/api/v1/platform/staff/tickets/{code}/transfer",
+            json={"department": "Made Up Department", "reason": "Should not be accepted"},
+        )
+        assert invalid.status_code == 422
 
         transferred = client.post(
             f"/api/v1/platform/staff/tickets/{code}/transfer",
-            json={"department": "Road Maintenance Cell", "reason": "Local road maintenance jurisdiction"},
+            json={"department": "Drainage & Sewerage Department", "reason": "Waterlogging is caused by a blocked storm drain"},
         )
         assert transferred.status_code == 200
-        assert transferred.json()["ticket"]["department"] == "Road Maintenance Cell"
+        assert transferred.json()["ticket"]["department"] == "Drainage & Sewerage Department"
+        assert transferred.json()["ticket"]["assigned_officer"] is None
+        assert transferred.json()["ticket"]["status"] == "SUBMITTED"
+        transfer_events = [e for e in transferred.json()["ticket"]["audit_events"] if e["event"] == "DEPARTMENT_TRANSFERRED"]
+        assert transfer_events
+        assert "Ward Officer (OFFICER)" in transfer_events[-1]["detail"]
+        assert "Road Crew A" in transfer_events[-1]["detail"]
 
         resolved = client.post(
             f"/api/v1/platform/staff/tickets/{code}/resolve",
@@ -114,6 +137,52 @@ def test_employee_assignment_transfer_resolution_and_citizen_reopen(monkeypatch)
         assert reopened.status_code == 200
         assert reopened.json()["ticket"]["status"] == "IN_PROGRESS"
         assert reopened.json()["meta"]["citizen_confirmation"] == "REOPENED"
+
+
+def test_staff_translation_available_to_officer_and_admin(monkeypatch):
+    with build_client(monkeypatch) as client:
+        signup(client, "translation.owner@gmail.com")
+        ticket = create_ticket(client, "Garbage has not been collected near the market.")
+        code = ticket["ticket_code"]
+        client.post("/api/v1/auth/logout")
+
+        monkeypatch.setattr(
+            platform_routes,
+            "translate_text",
+            lambda text, target, source: {
+                "original_text": text,
+                "translated_text": "बाजाराजवळ कचरा गोळा केलेला नाही.",
+                "source_language": "en",
+                "target_language": target,
+                "target_language_name": "Marathi",
+                "provider": "test provider",
+            },
+        )
+
+        seed_officer(client)
+        seed_admin(client)
+
+        officer_login = client.post(
+            "/api/v1/auth/employee-login",
+            json={"email": "officer@civicresolve.test", "password": "OfficerPass#123"},
+        )
+        assert officer_login.status_code == 200
+        languages = client.get("/api/v1/platform/staff/translation-languages")
+        assert languages.status_code == 200
+        assert any(item["code"] == "mr" for item in languages.json())
+        translated = client.post(f"/api/v1/platform/staff/tickets/{code}/translate", json={"target_language": "mr"})
+        assert translated.status_code == 200
+        assert translated.json()["target_language_name"] == "Marathi"
+        assert "कचरा" in translated.json()["translated_text"]
+
+        client.post("/api/v1/auth/logout")
+        admin_login = client.post(
+            "/api/v1/auth/employee-login",
+            json={"email": "admin@civicresolve.test", "password": "AdminPass#123"},
+        )
+        assert admin_login.status_code == 200
+        admin_translation = client.post(f"/api/v1/platform/staff/tickets/{code}/translate", json={"target_language": "mr"})
+        assert admin_translation.status_code == 200
 
 
 def test_incident_grouping_and_role_aware_assistant(monkeypatch):
