@@ -45,6 +45,15 @@ LANGUAGE_OPTIONS = [
 
 _CODE_TO_NAME = {item["code"].casefold(): item["name"] for item in LANGUAGE_OPTIONS}
 _NAME_TO_CODE = {item["name"].casefold(): item["code"] for item in LANGUAGE_OPTIONS}
+_GOOGLE_ENDPOINTS = tuple(
+    dict.fromkeys(
+        [
+            settings.translation_base_url,
+            "https://translate.google.com/translate_a/single",
+        ]
+    )
+)
+_MYMEMORY_ENDPOINT = "https://api.mymemory.translated.net/get"
 
 
 def available_languages() -> list[dict[str, str]]:
@@ -65,6 +74,57 @@ def _language_code(value: str | None, fallback: str = "auto") -> str:
 
 def language_name(code: str) -> str:
     return _CODE_TO_NAME.get(code.casefold(), code)
+
+
+def _google_translation(client: httpx.Client, original: str, source_code: str, target_code: str) -> tuple[str, str] | None:
+    for endpoint in _GOOGLE_ENDPOINTS:
+        try:
+            response = client.get(
+                endpoint,
+                params={
+                    "client": "gtx",
+                    "sl": source_code,
+                    "tl": target_code,
+                    "dt": "t",
+                    "q": original,
+                },
+                headers={"User-Agent": "Mozilla/5.0 CivicResolveAI/0.8 staff-translation"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            translated = "".join(
+                segment[0]
+                for segment in payload[0]
+                if isinstance(segment, list) and segment and isinstance(segment[0], str)
+            ).strip()
+            detected = payload[2] if len(payload) > 2 and isinstance(payload[2], str) else source_code
+            if translated:
+                return translated, detected or source_code
+        except (httpx.HTTPError, ValueError, IndexError, TypeError):
+            continue
+    return None
+
+
+def _mymemory_translation(client: httpx.Client, original: str, source_code: str, target_code: str) -> tuple[str, str] | None:
+    # MyMemory requires an explicit source language, so use it only when the
+    # complaint language detector gave us one. This avoids silently treating an
+    # unknown non-English statement as English.
+    if source_code == "auto":
+        return None
+    try:
+        response = client.get(
+            _MYMEMORY_ENDPOINT,
+            params={"q": original, "langpair": f"{source_code}|{target_code}"},
+            headers={"User-Agent": "CivicResolveAI/0.8 staff-translation"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        translated = str(payload.get("responseData", {}).get("translatedText") or "").strip()
+        if translated:
+            return translated, source_code
+    except (httpx.HTTPError, ValueError, TypeError):
+        return None
+    return None
 
 
 def translate_text(text: str, target_language: str, source_language: str | None = None) -> dict[str, str]:
@@ -88,41 +148,33 @@ def translate_text(text: str, target_language: str, source_language: str | None 
         }
 
     try:
-        with httpx.Client(timeout=settings.translation_timeout_seconds) as client:
-            response = client.get(
-                settings.translation_base_url,
-                params={
-                    "client": "gtx",
-                    "sl": source_code,
-                    "tl": target_code,
-                    "dt": "t",
-                    "q": original,
-                },
-                headers={"User-Agent": "CivicResolveAI/0.7 staff-translation"},
-            )
-            response.raise_for_status()
-            payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise TranslationError("Translation service is temporarily unavailable. The original citizen statement is unchanged.") from exc
+        with httpx.Client(timeout=settings.translation_timeout_seconds, follow_redirects=True) as client:
+            google = _google_translation(client, original, source_code, target_code)
+            if google:
+                translated, detected = google
+                return {
+                    "original_text": original,
+                    "translated_text": translated,
+                    "source_language": detected,
+                    "target_language": target_code,
+                    "target_language_name": language_name(target_code),
+                    "provider": "Google translation gateway",
+                }
 
-    try:
-        translated = "".join(
-            segment[0]
-            for segment in payload[0]
-            if isinstance(segment, list) and segment and isinstance(segment[0], str)
-        ).strip()
-        detected = payload[2] if len(payload) > 2 and isinstance(payload[2], str) else source_code
-    except (IndexError, TypeError) as exc:
-        raise TranslationError("Translation service returned an unreadable response. Please retry.") from exc
+            fallback = _mymemory_translation(client, original, source_code, target_code)
+            if fallback:
+                translated, detected = fallback
+                return {
+                    "original_text": original,
+                    "translated_text": translated,
+                    "source_language": detected,
+                    "target_language": target_code,
+                    "target_language_name": language_name(target_code),
+                    "provider": "MyMemory translation fallback",
+                }
+    except httpx.HTTPError:
+        pass
 
-    if not translated:
-        raise TranslationError("Translation service returned no translated text. Please retry.")
-
-    return {
-        "original_text": original,
-        "translated_text": translated,
-        "source_language": detected or source_code,
-        "target_language": target_code,
-        "target_language_name": language_name(target_code),
-        "provider": "Machine translation gateway",
-    }
+    raise TranslationError(
+        "Translation providers could not be reached right now. Check internet access and retry; the original citizen statement remains unchanged."
+    )
