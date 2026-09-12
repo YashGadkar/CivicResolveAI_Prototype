@@ -3,6 +3,7 @@ import { BellRing, Bot, CheckCircle2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { ProblemMap } from "./problem-map";
 import type { Ticket } from "../types";
 import { cn } from "../lib/utils";
 
@@ -22,7 +23,10 @@ export function Page({ title, eyebrow, subtitle, children }: { title: string; ey
 }
 
 export function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="mb-2 block text-sm font-bold text-slate-800 dark:text-slate-200">{label}</span>{children}</label>; }
-export function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-800/70"><div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">{label}</div><div className="mt-1 break-words text-sm font-bold text-slate-900 dark:text-slate-100">{value}</div></div>; }
+export function Metric({ label, value }: { label: string; value: string }) {
+  if (label === "Location") return <div className="sm:col-span-2"><ProblemMap location={value} compact /></div>;
+  return <div className="rounded-xl border border-slate-200 bg-white p-3.5 dark:border-slate-700 dark:bg-slate-800/70"><div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">{label}</div><div className="mt-1 break-words text-sm font-bold text-slate-900 dark:text-slate-100">{value}</div></div>;
+}
 export function DarkMetric({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl border border-white/10 bg-white/[.06] p-4"><div className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">{label}</div><b className="mt-1 block text-sm text-white">{value}</b></div>; }
 export function Kpi({ label, value }: { label: string; value: string }) { return <Card className="border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"><CardContent className="pt-5"><div className="text-[10px] font-black uppercase tracking-[.15em] text-slate-400">{label}</div><div className="mt-2 text-3xl font-black text-[#081525] dark:text-white">{value}</div></CardContent></Card>; }
 
