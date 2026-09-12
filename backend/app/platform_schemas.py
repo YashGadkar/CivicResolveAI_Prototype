@@ -29,11 +29,18 @@ class AttachmentResponse(BaseModel):
     created_at: datetime
 
 
+class StaffMemberResponse(BaseModel):
+    name: str
+    email: str | None = None
+    role: str
+
+
 class EnrichedTicketResponse(BaseModel):
     ticket: dict
     meta: TicketMetaResponse
     attachments: list[AttachmentResponse] = Field(default_factory=list)
     citizen: dict | None = None
+    assignee: StaffMemberResponse | None = None
 
 
 class CitizenResolutionRequest(BaseModel):
