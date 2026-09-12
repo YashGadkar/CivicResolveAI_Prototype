@@ -31,10 +31,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: "Request failed." }));
-    let detail = typeof payload.detail === "string" ? payload.detail : payload.detail?.message || payload.detail?.[0]?.msg || "Request failed.";
-    if (response.status >= 500 && typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-      detail = localBackendHint();
-    }
+    const detail = typeof payload.detail === "string" ? payload.detail : payload.detail?.message || payload.detail?.[0]?.msg || "Request failed.";
     throw new Error(detail);
   }
   if (response.status === 204) return undefined as T;
@@ -42,6 +39,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export type ComplaintPayload = { complaint: string; location?: string; landmark?: string; contact?: string; duplicate_of?: string; verify_location?: boolean; };
+export type TranslationLanguage = { code: string; name: string };
+export type TranslationResult = {
+  original_text: string;
+  translated_text: string;
+  source_language: string;
+  target_language: string;
+  target_language_name: string;
+  provider: string;
+};
 
 async function createTicket(payload: ComplaintPayload, explicitIdempotencyKey?: string): Promise<Ticket> {
   const payloadKey = JSON.stringify(payload);
@@ -91,6 +97,9 @@ export const api = {
   platformMine: () => request<EnrichedTicket[]>("/platform/tickets/mine"),
   platformTicket: (code: string) => request<EnrichedTicket>(`/platform/tickets/${encodeURIComponent(code)}`),
   platformStaffTickets: () => request<EnrichedTicket[]>("/platform/staff/tickets"),
+  staffDepartments: () => request<string[]>("/platform/staff/departments"),
+  translationLanguages: () => request<TranslationLanguage[]>("/platform/staff/translation-languages"),
+  translateTicket: (code: string, targetLanguage: string) => request<TranslationResult>(`/platform/staff/tickets/${encodeURIComponent(code)}/translate`, { method: "POST", body: JSON.stringify({ target_language: targetLanguage }) }),
   deleteTicket: (code: string) => request<EnrichedTicket>(`/platform/tickets/${encodeURIComponent(code)}`, { method: "DELETE" }),
   restoreTicket: (code: string) => request<EnrichedTicket>(`/platform/tickets/${encodeURIComponent(code)}/restore`, { method: "POST" }),
   confirmResolution: (code: string, payload: { resolved: boolean; rating?: number; feedback?: string }) => request<EnrichedTicket>(`/platform/tickets/${encodeURIComponent(code)}/confirm`, { method: "POST", body: JSON.stringify(payload) }),
