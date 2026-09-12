@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..models import Attachment, AuditEvent, Ticket, TicketMeta, User
 from ..platform_schemas import AttachmentResponse, IncidentResponse, TicketMetaResponse
 from .location import verify_location
+from .pipeline import CATEGORY_RULES
 from .ticketing import add_audit, get_ticket, to_response
 
 EMERGENCY_TERMS = {
@@ -27,6 +28,12 @@ UPLOAD_ROOT = Path("uploads")
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def civic_departments() -> list[str]:
+    departments = {department for department, _signals in CATEGORY_RULES.values()}
+    departments.add("Citizen Services Coordination Cell")
+    return sorted(departments)
 
 
 def _slug(value: str) -> str:
@@ -171,10 +178,34 @@ def resolve_with_note(db: Session, ticket: Ticket, note: str) -> TicketMeta:
     return meta
 
 
-def transfer_ticket(db: Session, ticket: Ticket, department: str, reason: str) -> Ticket:
-    previous = ticket.department
-    ticket.department = department.strip()
-    add_audit(db, ticket, "DEPARTMENT_TRANSFERRED", f"{previous} → {ticket.department}. Reason: {reason.strip()}")
+def transfer_ticket(db: Session, ticket: Ticket, department: str, reason: str, actor: User) -> Ticket:
+    target = department.strip()
+    explanation = reason.strip()
+    approved = civic_departments()
+    if target not in approved:
+        raise ValueError("Choose a destination from the approved CivicResolve department list.")
+    if ticket.status == "RESOLVED":
+        raise ValueError("Resolved tickets cannot be transferred. Reopen the ticket before changing department ownership.")
+    previous_department = ticket.department
+    if target == previous_department:
+        raise ValueError("This ticket is already routed to that department.")
+
+    previous_officer = ticket.assigned_officer
+    previous_status = ticket.status
+    ticket.department = target
+    ticket.assigned_officer = None
+    if previous_officer and ticket.status in {"ASSIGNED", "IN_PROGRESS"}:
+        ticket.status = "SUBMITTED"
+
+    detail = (
+        f"{previous_department} → {target}. Reason: {explanation}. "
+        f"Transferred by {actor.name} ({actor.role})."
+    )
+    if previous_officer:
+        detail += f" Previous assignment '{previous_officer}' was cleared for safe re-routing."
+    if previous_status != ticket.status:
+        detail += f" Workflow status reset from {previous_status} to {ticket.status} for the new department queue."
+    add_audit(db, ticket, "DEPARTMENT_TRANSFERRED", detail)
     db.commit()
     return get_ticket(db, ticket.ticket_code)
 
