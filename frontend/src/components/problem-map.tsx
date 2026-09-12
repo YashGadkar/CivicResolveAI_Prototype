@@ -1,6 +1,6 @@
 import { ExternalLink, MapPin } from "lucide-react";
 
-function mapUrls(latitude: number, longitude: number) {
+function coordinateMapUrls(latitude: number, longitude: number) {
   const span = 0.012;
   const left = longitude - span;
   const right = longitude + span;
@@ -8,7 +8,16 @@ function mapUrls(latitude: number, longitude: number) {
   const top = latitude + span;
   const embed = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(`${left},${bottom},${right},${top}`)}&layer=mapnik&marker=${encodeURIComponent(`${latitude},${longitude}`)}`;
   const open = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=16/${latitude}/${longitude}`;
-  return { embed, open };
+  return { embed, open, attribution: "Map data © OpenStreetMap contributors" };
+}
+
+function searchMapUrls(location: string) {
+  const query = encodeURIComponent(location);
+  return {
+    embed: `https://www.google.com/maps?q=${query}&output=embed`,
+    open: `https://www.google.com/maps/search/?api=1&query=${query}`,
+    attribution: "Map preview based on the verified problem location",
+  };
 }
 
 export function ProblemMap({
@@ -19,13 +28,18 @@ export function ProblemMap({
   compact = false,
 }: {
   location: string | null | undefined;
-  latitude: number | null | undefined;
-  longitude: number | null | undefined;
+  latitude?: number | null;
+  longitude?: number | null;
   title?: string;
   compact?: boolean;
 }) {
   const hasCoordinates = typeof latitude === "number" && typeof longitude === "number";
-  const urls = hasCoordinates ? mapUrls(latitude, longitude) : null;
+  const usableLocation = Boolean(location && location.trim() && !/needs verified location|location required|not resolved/i.test(location));
+  const urls = hasCoordinates
+    ? coordinateMapUrls(latitude, longitude)
+    : usableLocation
+      ? searchMapUrls(location!.trim())
+      : null;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -57,7 +71,7 @@ export function ProblemMap({
           src={urls.embed}
           className={`w-full border-0 ${compact ? "h-44" : "h-64"}`}
           loading="lazy"
-          referrerPolicy="no-referrer"
+          referrerPolicy="no-referrer-when-downgrade"
         />
       ) : (
         <div className={`grid place-items-center bg-slate-50 px-6 text-center dark:bg-slate-950/50 ${compact ? "h-36" : "h-44"}`}>
@@ -68,7 +82,7 @@ export function ProblemMap({
           </div>
         </div>
       )}
-      <div className="border-t border-slate-100 px-4 py-2 text-[10px] text-slate-400 dark:border-slate-800">Map data © OpenStreetMap contributors</div>
+      <div className="border-t border-slate-100 px-4 py-2 text-[10px] text-slate-400 dark:border-slate-800">{urls?.attribution || "Location verification required for map preview"}</div>
     </section>
   );
 }
