@@ -22,7 +22,38 @@ export function AuthPage({ onAuth,theme,onToggleTheme }: { onAuth: (user: User) 
       {portal==="citizen"&&<div className="mt-4 flex gap-2 text-sm"><button type="button" className={cn("rounded-full px-3 py-1.5 font-semibold",mode==="login"?"bg-civic-50 text-civic-700 dark:bg-teal-950 dark:text-teal-200":"text-slate-500 dark:text-slate-400")} onClick={()=>switchMode("login")}>Sign in</button><button type="button" className={cn("rounded-full px-3 py-1.5 font-semibold",mode==="signup"?"bg-civic-50 text-civic-700 dark:bg-teal-950 dark:text-teal-200":"text-slate-500 dark:text-slate-400")} onClick={()=>switchMode("signup")}>New user</button></div>}
       <form className="mt-6 space-y-4" onSubmit={submit} autoComplete="off">{portal==="citizen"&&mode==="signup"&&<Field label="Full name"><input className="focus-field" value={name} onChange={e=>setName(e.target.value)} required minLength={2} autoComplete="off"/></Field>}<Field label={portal==="employee"?"Employee email":"Gmail address"}><input className="focus-field" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder={portal==="employee"?"officer@department.gov":"name@gmail.com"} required autoComplete="off" name="civicresolve-login-email"/></Field><Field label="Password"><div className="relative"><input className="focus-field pr-12" type={show?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} required autoComplete="new-password" name="civicresolve-login-password"/><button type="button" aria-label={show?"Hide password":"Show password"} onClick={()=>setShow(v=>!v)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></Field>
       {portal==="citizen"&&mode==="signup"&&<div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-900">{["10+ characters","Uppercase","Lowercase","Number","Special character"].map((r,i)=><span className={rules[i]?"font-semibold text-emerald-700 dark:text-emerald-300":"text-slate-400"} key={r}>✓ {r}</span>)}</div>}
-      <Button size="lg" className="w-full" disabled={busy}>{busy?<Activity className="mr-2 animate-spin" size={18}/>:portal==="employee"?<UserRoundCheck className="mr-2" size={18}/>:mode==="signup"?<UserPlus className="mr-2" size={18}/>:<LockKeyhole className="mr-2" size={18}/>} {portal==="employee"?"Employee sign in":mode==="signup"?"Create account":"Sign in"}</Button></form><p className="mt-5 text-xs leading-5 text-slate-400">{portal==="employee"?"Employee accounts are provisioned by the system administrator; public employee sign-up is disabled.":"Citizen registration validates Gmail format. Email ownership verification should be added for a real deployment."}</p>
+      <Button size="lg" className="w-full" disabled={busy}>{busy?<Activity className="mr-2 animate-spin" size={18}/>:portal==="employee"?<UserRoundCheck className="mr-2" size={18}/>:mode==="signup"?<UserPlus className="mr-2" size={18}/>:<LockKeyhole className="mr-2" size={18}/>} {portal==="employee"?"Employee sign in":mode==="signup"?"Create account":"Sign in"}</Button></form>
+      {portal==="employee" && (
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Demo Employee Quick-Fill</p>
+            <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">Pass: Password@1234</span>
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {[
+              { label: "👮‍♂️ Roads Officer", email: "rohan.sharma@civicresolve.gov.in" },
+              { label: "💧 Water Officer", email: "priya.water@civicresolve.gov.in" },
+              { label: "⚡ Electrical Officer", email: "patil.electrical@civicresolve.gov.in" },
+              { label: "🧹 Sanitation Officer", email: "ananya.sanitation@civicresolve.gov.in" },
+              { label: "🛡️ Governance Admin", email: "admin@civicresolve.gov.in" },
+              { label: "📋 General Officer", email: "officer@civicresolve.local" },
+            ].map((item) => (
+              <button
+                key={item.email}
+                type="button"
+                onClick={() => {
+                  setEmail(item.email);
+                  setPassword("Password@1234");
+                }}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-civic-500 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-5 text-xs leading-5 text-slate-400">{portal==="employee"?"Employee accounts are provisioned by the system administrator; public employee sign-up is disabled.":"Citizen registration validates Gmail format. Email ownership verification should be added for a real deployment."}</p>
     </div></section>
   </div></div>;
 }

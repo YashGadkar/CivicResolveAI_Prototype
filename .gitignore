@@ -15,6 +15,7 @@ node_modules/
 frontend/dist/
 frontend/.env
 npm-debug.log*
+*.tsbuildinfo
 
 # Editors / OS
 .vscode/
